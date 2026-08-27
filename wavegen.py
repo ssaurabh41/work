@@ -591,15 +591,19 @@ def render_row_wave(dg: Diagram, row: Row) -> str:
             else:
                 cls = f"wg-bus wg-b{b.slot}"
                 parts.append(f'<path class="{cls}" d="{body}"/>')
-                label = _fit_text(b.text or "", width - 2 * bs - 6)
-                if label:
+                full = b.text or ""
+                avail = width - 2 * bs - 6
+                label = _fit_text(full, avail)
+                if full:
                     cx = (xs + xe) / 2.0
-                    title = ""
-                    if label != (b.text or ""):
-                        title = f"<title>{esc(b.text)}</title>"
+                    # data-avail is the room for text at scale 1; the page rescales
+                    # it by the live time-unit factor and re-truncates.
                     parts.append(
-                        f'<text class="wg-bustext wg-b{b.slot}-t" x="{fmt(cx)}" '
-                        f'y="{fmt(mid)}" dy="0.34em">{esc(label)}{title}</text>'
+                        f'<text class="wg-bustext wg-nox wg-b{b.slot}-t" '
+                        f'x="{fmt(cx)}" y="{fmt(mid)}" dy="0.34em" '
+                        f'data-ax="{fmt(cx)}" data-avail="{fmt(avail)}" '
+                        f'data-full="{esc(full)}">{esc(label)}'
+                        f'<title>{esc(full)}</title></text>'
                     )
             prev_exit, prev_bus = None, True
             continue
@@ -661,12 +665,12 @@ def _fit_text(text: str, avail: float) -> str:
         return ""
     per = BUS_FONT * 0.60
     limit = int(max(0.0, avail) // per)
-    if limit <= 0:
-        return ""
     if len(text) <= limit:
         return text
-    if limit <= 1:
-        return "…"
+    # Below two characters an ellipsis alone is just noise — the brick shape
+    # already says a value is there, and the tooltip still carries it.
+    if limit < 2:
+        return ""
     return text[: limit - 1] + "…"
 
 
@@ -682,7 +686,7 @@ def _edge_arrow(x: float, from_y: float, to_y: float, hi: float, lo: float) -> s
     else:
         d = (f"M {fmt(x)} {fmt(cy + t / 2)} L {fmt(x - w)} {fmt(cy - t / 2)} "
              f"L {fmt(x + w)} {fmt(cy - t / 2)} Z")
-    return f'<path class="wg-edgemark" d="{d}"/>'
+    return f'<path class="wg-edgemark wg-nox" data-ax="{fmt(x)}" d="{d}"/>'
 
 
 def _gap_symbol(x: float, hi: float, lo: float) -> str:
@@ -695,10 +699,12 @@ def _gap_symbol(x: float, hi: float, lo: float) -> str:
              f"{fmt(x + ox + 10)} {fmt(bot - h * 0.70)} "
              f"{fmt(x + ox + 2)} {fmt(top)}")
     return (
+        f'<g class="wg-nox" data-ax="{fmt(x)}">'
         f'<rect class="wg-gapfill" x="{fmt(x - 4)}" y="{fmt(top)}" '
         f'width="9" height="{fmt(h)}"/>'
         f'<path class="wg-gapline" d="{curve(-4)}"/>'
         f'<path class="wg-gapline" d="{curve(3)}"/>'
+        f'</g>'
     )
 
 
@@ -721,15 +727,18 @@ def render_ruler(dg: Diagram) -> str:
     else:
         base, centred = int(tick), False
 
-    out = [f'<rect class="wg-rulerbg" x="0" y="0" width="{fmt(dg.cycles * dg.cw)}" '
-           f'height="{fmt(RULER_H)}"/>']
+    out = [f'<rect class="wg-rulerbg" id="wg-rulerbg" x="0" y="0" '
+           f'width="{fmt(dg.cycles * dg.cw)}" height="{fmt(RULER_H)}"/>']
     y = RULER_H - 8
+    # Every tick is emitted with its cycle index so the page can re-thin them as
+    # the time unit changes; `every` only decides what is visible at base scale.
     for c in range(total + (0 if centred else 1)):
         x = dg.x_of(c + (0.5 if centred else 0.0))
         strong = (c % every == 0)
-        if strong:
-            out.append(
-                f'<text class="wg-tick" x="{fmt(x)}" y="{fmt(y)}">{base + c}</text>')
+        hide = "" if strong else ' style="display:none"'
+        out.append(
+            f'<text class="wg-tick wg-nox" x="{fmt(x)}" y="{fmt(y)}" '
+            f'data-ax="{fmt(x)}" data-cyc="{c}"{hide}>{base + c}</text>')
         out.append(
             f'<line class="wg-tickmark{"" if strong else " wg-faintline"}" '
             f'x1="{fmt(dg.x_of(c))}" y1="{fmt(RULER_H - 5)}" '
@@ -802,7 +811,7 @@ def _chip(x: float, y: float, label: str, colour: str, anchor: str = "middle") -
     w = len(label) * 6.0 + 12
     x0 = {"middle": x - w / 2, "start": x, "end": x - w}[anchor]
     return (
-        f'<g class="wg-chip">'
+        f'<g class="wg-chip wg-nox" data-ax="{fmt(x)}">'
         f'<rect x="{fmt(x0)}" y="{fmt(y - 13)}" width="{fmt(w)}" height="15" rx="4" '
         f'style="fill:{colour}"/>'
         f'<text x="{fmt(x0 + w / 2)}" y="{fmt(y - 2.5)}">{esc(label)}</text>'
@@ -905,17 +914,18 @@ def render_edges(dg: Diagram) -> str:
         if label:
             w = len(label) * 6.1 + 12
             out.append(
-                f'<g class="wg-edgelabel">'
+                f'<g class="wg-edgelabel wg-nox" data-ax="{fmt(lx)}">'
                 f'<rect x="{fmt(lx - w / 2)}" y="{fmt(ly - 8)}" width="{fmt(w)}" '
                 f'height="16" rx="5"/>'
                 f'<text x="{fmt(lx)}" y="{fmt(ly)}" dy="0.34em">{esc(label)}</text>'
                 f'</g>')
 
     for name, (nx, ny) in dg.nodes.items():
-        out.append(f'<circle class="wg-node" cx="{fmt(nx)}" cy="{fmt(ny)}" r="2.6"/>')
+        out.append(f'<circle class="wg-node wg-nox" data-ax="{fmt(nx)}" '
+                   f'cx="{fmt(nx)}" cy="{fmt(ny)}" r="2.6"/>')
         if name.isupper():
-            out.append(f'<text class="wg-nodelabel" x="{fmt(nx)}" y="{fmt(ny - 8)}">'
-                       f'{esc(name)}</text>')
+            out.append(f'<text class="wg-nodelabel wg-nox" data-ax="{fmt(nx)}" '
+                       f'x="{fmt(nx)}" y="{fmt(ny - 8)}">{esc(name)}</text>')
     return "".join(out)
 
 
@@ -945,7 +955,12 @@ SVG_CSS = """
 .wg-rail{fill:none;stroke:var(--wg-wave);stroke-width:1.9;stroke-linejoin:round;
   stroke-linecap:round;vector-effect:non-scaling-stroke}
 .wg-rail.wg-clk{stroke:var(--wg-wave-clk)}
-.wg-bus{stroke-width:1.6;stroke-linejoin:round}
+.wg-bus{stroke-width:1.6;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+/* Every stroke inside the time-scaled group keeps its screen width, so
+   compressing the time unit thins the diagram's spacing, never its ink. */
+.wg-hatchbox,.wg-hatchline,.wg-gapline,.wg-gridline,.wg-tickmark,
+.wg-markedge,.wg-markline,.wg-edgepath,.wg-mline,.wg-cursorline,
+.wg-edgelabel rect{vector-effect:non-scaling-stroke}
 .wg-bustext{font-family:var(--wg-mono);font-size:12px;font-weight:500;
   text-anchor:middle;letter-spacing:.01em;pointer-events:none}
 .wg-hatchbox{fill:var(--wg-hatch-bg);stroke:var(--wg-hatch);stroke-width:1.5;
@@ -1026,10 +1041,13 @@ def build_svg(dg: Diagram, standalone: bool = False, theme: str | None = None) -
     body.append(SVG_DEFS)
     # Paint the full canvas so the SVG is self-sufficient when saved out of the
     # page (an unpainted SVG composites onto whatever ground the viewer supplies).
-    body.append(f'<rect class="wg-canvasbg" x="0" y="0" width="{fmt(dg.width)}" '
-                f'height="{fmt(dg.height)}"/>')
+    body.append(f'<rect class="wg-canvasbg" id="wg-canvasbg" x="0" y="0" '
+                f'width="{fmt(dg.width)}" height="{fmt(dg.height)}"/>')
 
-    waves = [f'<g class="wg-waves" transform="translate({fmt(dg.name_w)},0)">']
+    # The gutter offset stays outside the scaled group; everything measured in
+    # time goes inside it, so the page can restretch the x axis on its own.
+    waves = [f'<g class="wg-waves" transform="translate({fmt(dg.name_w)},0)">',
+             f'<g class="wg-xscale" id="wg-xscale">']
     waves.append(f'<g class="wg-layer-bg">{render_row_backgrounds(dg)}</g>')
     waves.append(f'<g class="wg-layer-grid">{render_grid(dg)}</g>')
     waves.append(f'<g class="wg-layer-marks">{render_marks(dg)}</g>')
@@ -1069,7 +1087,7 @@ def build_svg(dg: Diagram, standalone: bool = False, theme: str | None = None) -
         f'<rect x="0" y="2" width="44" height="15" rx="4"/>'
         f'<text x="22" y="13"></text></g>'
         f'</g>')
-    waves.append("</g>")
+    waves.append("</g></g>")
     body.append("".join(waves))
 
     body.append(f'<g class="wg-gutter" id="wg-gutter">{render_names(dg)}</g>')
@@ -1089,7 +1107,8 @@ def build_svg(dg: Diagram, standalone: bool = False, theme: str | None = None) -
         f'viewBox="0 0 {fmt(dg.width)} {fmt(dg.height)}" '
         f'data-cw="{fmt(dg.cw)}" data-namew="{fmt(dg.name_w)}" '
         f'data-cycles="{fmt(dg.cycles)}" data-basew="{fmt(dg.width)}" '
-        f'data-baseh="{fmt(dg.height)}">'
+        f'data-baseh="{fmt(dg.height)}" data-padr="{fmt(PAD_R)}" '
+        f'data-busfont="{fmt(BUS_FONT)}">'
         f'{style}{"".join(body)}</svg>'
     )
 
@@ -1139,6 +1158,28 @@ body{background:var(--wg-bg);color:var(--wg-text);font-family:var(--wg-sans);
 .wg-btn:focus-visible{outline:2px solid var(--wg-accent);outline-offset:2px}
 .wg-btn.is-on{background:var(--wg-accent);border-color:var(--wg-accent);color:#fff}
 
+.wg-scale{display:flex;align-items:center;gap:9px;background:var(--wg-panel-2);
+  border:1px solid var(--wg-border);border-radius:8px;padding:5px 11px}
+.wg-scale label{font-size:11px;font-weight:550;color:var(--wg-muted);
+  white-space:nowrap;letter-spacing:.01em}
+.wg-scale output{font-family:var(--wg-mono);font-size:11.5px;color:var(--wg-text);
+  font-variant-numeric:tabular-nums;min-width:42px;text-align:right}
+#wg-cwrange{-webkit-appearance:none;appearance:none;background:none;
+  width:132px;height:16px;cursor:ew-resize;margin:0}
+#wg-cwrange:focus-visible{outline:2px solid var(--wg-accent);outline-offset:3px;
+  border-radius:4px}
+#wg-cwrange::-webkit-slider-runnable-track{height:4px;border-radius:3px;
+  background:var(--wg-border)}
+#wg-cwrange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:13px;height:13px;border-radius:50%;background:var(--wg-accent);
+  border:2px solid var(--wg-panel);margin-top:-4.5px;
+  transition:transform .12s}
+#wg-cwrange:hover::-webkit-slider-thumb{transform:scale(1.15)}
+#wg-cwrange::-moz-range-track{height:4px;border-radius:3px;
+  background:var(--wg-border)}
+#wg-cwrange::-moz-range-thumb{width:11px;height:11px;border-radius:50%;
+  background:var(--wg-accent);border:2px solid var(--wg-panel)}
+
 .wg-search{background:var(--wg-panel-2);border:1px solid var(--wg-border);
   border-radius:8px;color:var(--wg-text);font-family:var(--wg-sans);font-size:12px;
   padding:6px 10px;width:150px;transition:border-color .12s}
@@ -1174,9 +1215,11 @@ PAGE_JS = """
   var svg=document.getElementById('wg-svg');
   var stage=document.getElementById('wg-stage');
   var gutter=document.getElementById('wg-gutter');
-  var CW=parseFloat(svg.dataset.cw), NAMEW=parseFloat(svg.dataset.namew);
+  var BASECW=parseFloat(svg.dataset.cw), NAMEW=parseFloat(svg.dataset.namew);
   var CYCLES=parseFloat(svg.dataset.cycles);
   var BASEW=parseFloat(svg.dataset.basew), BASEH=parseFloat(svg.dataset.baseh);
+  var PADR=parseFloat(svg.dataset.padr), BUSFONT=parseFloat(svg.dataset.busfont);
+  var CW=BASECW;   /* live width of one time unit, in px */
 
   /* ---- theme ------------------------------------------------------- */
   var themeBtn=document.getElementById('wg-theme');
@@ -1193,6 +1236,65 @@ PAGE_JS = """
     setTheme(root.getAttribute('data-theme')==='dark'?'light':'dark');
   });
 
+  /* ---- horizontal time-unit scale ---------------------------------- */
+  /* The whole wave layer lives inside #wg-xscale.  Stretching only its x axis
+     rescales time without touching row heights, so anything that must stay
+     legible (text, chips, node dots, edge marks) carries .wg-nox and is
+     counter-scaled about its own anchor.                                    */
+  var xscale=document.getElementById('wg-xscale');
+  var canvasbg=document.getElementById('wg-canvasbg');
+  var rulerbg=document.getElementById('wg-rulerbg');
+  var hatch=document.getElementById('wg-hatchpat');
+  var range=document.getElementById('wg-cwrange');
+  /* Overlays live inside the scaled group, so they are positioned in unscaled
+     units: one cycle is BASECW wide there, whatever the live time unit is. */
+  function ux(cycle){ return cycle*BASECW; }
+  var cwOut=document.getElementById('wg-cwval');
+  var noxEls=[].slice.call(svg.querySelectorAll('.wg-nox'));
+  var busText=noxEls.filter(function(el){return el.dataset.avail!==undefined;});
+  var ticks=[].slice.call(svg.querySelectorAll('.wg-tick'));
+  var MINCW=parseFloat(range.min), MAXCW=parseFloat(range.max);
+
+  function counterScale(el,k){
+    var ax=parseFloat(el.dataset.ax)||0;
+    el.setAttribute('transform',
+      'translate('+(ax-ax/k).toFixed(3)+',0) scale('+(1/k).toFixed(5)+',1)');
+  }
+  function fitText(s,avail){
+    if(!s) return '';
+    var n=Math.floor(avail/(BUSFONT*0.60));
+    if(s.length<=n) return s;
+    if(n<2) return '';          /* matches _fit_text() in wavegen.py */
+    return s.slice(0,n-1)+'\\u2026';
+  }
+  function applyCw(v,fromSlider){
+    CW=Math.min(MAXCW,Math.max(MINCW,v));
+    var k=CW/BASECW;
+    xscale.setAttribute('transform','scale('+k.toFixed(6)+',1)');
+    BASEW=NAMEW+CYCLES*CW+PADR;
+    svg.setAttribute('width',BASEW.toFixed(2));
+    svg.setAttribute('viewBox','0 0 '+BASEW.toFixed(2)+' '+BASEH);
+    canvasbg.setAttribute('width',BASEW.toFixed(2));
+    noxEls.forEach(function(el){counterScale(el,k);});
+    /* Bus labels get the room the brick actually has on screen. */
+    busText.forEach(function(el){
+      el.textContent=fitText(el.dataset.full,parseFloat(el.dataset.avail)*k);
+      var t=document.createElementNS(SVGNS,'title');
+      t.textContent=el.dataset.full; el.appendChild(t);
+    });
+    /* Thin cycle numbers so they never collide. */
+    var every=Math.max(1,Math.ceil(26/CW));
+    if(every>2) every=Math.ceil(every/5)*5;
+    ticks.forEach(function(t){
+      t.style.display=(parseInt(t.dataset.cyc,10)%every===0)?'':'none';
+    });
+    if(hatch) hatch.setAttribute('patternTransform',
+      'scale('+(1/k).toFixed(5)+',1) rotate(45)');
+    cwOut.textContent=Math.round(CW)+'px';
+    if(!fromSlider) range.value=CW;
+    applyZoom();
+  }
+
   /* ---- zoom -------------------------------------------------------- */
   var zoom=1, zoomVal=document.getElementById('wg-zoomval');
   function applyZoom(){
@@ -1202,14 +1304,22 @@ PAGE_JS = """
     zoomVal.textContent=Math.round(zoom*100)+'%';
   }
   function fit(){
+    /* Fit the diagram to the window by narrowing the time unit first, and only
+       then shrinking overall if the names alone still overflow. */
     var avail=stage.clientWidth-24;
-    zoom=avail/BASEW; applyZoom();
+    zoom=1;
+    applyCw((avail-NAMEW-PADR)/CYCLES);
+    if(BASEW>avail){ zoom=avail/BASEW; applyZoom(); }
   }
+  range.addEventListener('input',function(){applyCw(parseFloat(range.value),true);});
   document.getElementById('wg-zoomin').addEventListener('click',function(){zoom*=1.25;applyZoom();});
   document.getElementById('wg-zoomout').addEventListener('click',function(){zoom/=1.25;applyZoom();});
   document.getElementById('wg-zoomfit').addEventListener('click',fit);
-  document.getElementById('wg-zoomreset').addEventListener('click',function(){zoom=1;applyZoom();});
-  applyZoom();
+  document.getElementById('wg-zoomreset').addEventListener('click',function(){
+    zoom=1; applyCw(BASECW);
+  });
+  range.value=BASECW;
+  applyCw(BASECW);
 
   /* ---- sticky name gutter ------------------------------------------ */
   stage.addEventListener('scroll',function(){
@@ -1243,10 +1353,11 @@ PAGE_JS = """
     if(x===null||x<0){clearHover();return;}
     var c=clampCycle(toCycle(x));
     var snapped=Math.round(c*2)/2;
-    var px=snapped*CW;
+    var px=ux(snapped);
     svg.classList.add('wg-cursor-on');
     line.setAttribute('x1',px); line.setAttribute('x2',px);
     chipRect.setAttribute('x',px-22); chipText.setAttribute('x',px);
+    chip.dataset.ax=px; counterScale(chip,CW/BASECW);
     chipText.textContent=(Math.round(snapped*100)/100).toFixed(1);
 
     var ctm=svg.getScreenCTM();
@@ -1274,7 +1385,7 @@ PAGE_JS = """
 
   function drawMeasure(){
     if(mA===null||mB===null){svg.classList.remove('wg-m-on');return;}
-    var a=Math.min(mA,mB)*CW, b=Math.max(mA,mB)*CW;
+    var a=ux(Math.min(mA,mB)), b=ux(Math.max(mA,mB));
     svg.classList.add('wg-m-on');
     lineA.setAttribute('x1',a); lineA.setAttribute('x2',a);
     lineB.setAttribute('x1',b); lineB.setAttribute('x2',b);
@@ -1283,6 +1394,7 @@ PAGE_JS = """
     var w=label.length*7+16, cx=(a+b)/2;
     mchipR.setAttribute('x',cx-w/2); mchipR.setAttribute('width',w);
     mchipT.setAttribute('x',cx); mchipT.textContent=label;
+    mchip.dataset.ax=cx; counterScale(mchip,CW/BASECW);
     updateReadout(null,null);
   }
   svg.addEventListener('click',function(e){
@@ -1347,7 +1459,9 @@ PAGE_JS = """
     if(e.target.tagName==='INPUT') { if(e.key==='Escape') e.target.blur(); return; }
     if(e.key==='+'||e.key==='='){zoom*=1.25;applyZoom();}
     else if(e.key==='-'||e.key==='_'){zoom/=1.25;applyZoom();}
-    else if(e.key==='0'){zoom=1;applyZoom();}
+    else if(e.key==='0'){zoom=1;applyCw(BASECW);}
+    else if(e.key==='['){applyCw(CW-Math.max(1,CW*0.15));}
+    else if(e.key===']'){applyCw(CW+Math.max(1,CW*0.15));}
     else if(e.key==='f'){fit();}
     else if(e.key==='t'){setTheme(root.getAttribute('data-theme')==='dark'?'light':'dark');}
     else if(e.key==='/'){e.preventDefault();search.focus();}
@@ -1396,12 +1510,18 @@ def build_html(dg: Diagram) -> str:
   <div class="wg-tools">
     <input id="wg-search" class="wg-search" type="search" placeholder="Filter signals…"
            aria-label="Filter signals">
+    <div class="wg-scale">
+      <label for="wg-cwrange">Time unit</label>
+      <input id="wg-cwrange" type="range" min="6" max="160" step="1"
+             aria-label="Width of one time unit in pixels">
+      <output id="wg-cwval" for="wg-cwrange">46px</output>
+    </div>
     <div class="wg-seg" role="group" aria-label="Zoom">
       <button id="wg-zoomout" title="Zoom out (-)" aria-label="Zoom out">−</button>
       <span class="wg-zoomval" id="wg-zoomval">100%</span>
       <button id="wg-zoomin" title="Zoom in (+)" aria-label="Zoom in">+</button>
-      <button id="wg-zoomfit" title="Fit to width (f)">Fit</button>
-      <button id="wg-zoomreset" title="Reset zoom (0)">1:1</button>
+      <button id="wg-zoomfit" title="Fit the whole diagram to the window (f)">Fit</button>
+      <button id="wg-zoomreset" title="Reset zoom and time unit (0)">1:1</button>
     </div>
     <button id="wg-export" class="wg-btn" title="Download the diagram as SVG">Export SVG</button>
     <button id="wg-theme" class="wg-btn" title="Toggle theme (t)">Light</button>
@@ -1418,6 +1538,7 @@ def build_html(dg: Diagram) -> str:
   <span class="wg-hint">
     <span class="wg-kbd">click</span> set A/B ·
     <span class="wg-kbd">esc</span> clear ·
+    <span class="wg-kbd">[</span><span class="wg-kbd">]</span> time unit ·
     <span class="wg-kbd">/</span> search ·
     <span class="wg-kbd">t</span> theme ·
     <span class="wg-kbd">f</span> fit

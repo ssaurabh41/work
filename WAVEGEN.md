@@ -84,6 +84,13 @@ Edge shapes: `-` straight, `~` spline, `-|` / `|-` / `-|-` orthogonal, with
 
 ## Extensions over stock WaveDrom
 
+* **Horizontal time-unit slider** — set the pixel width of one step, from 6 px to
+  160 px, to bring a long waveform into view. Only the time axis rescales: row
+  heights, signal names, bus labels, tick numbers and annotation chips keep their
+  size, bus labels re-truncate to the room actually available (the full value stays
+  in the tooltip), and cycle numbers thin out to avoid collisions. `Fit` sets the
+  time unit so the whole diagram fits the window; `1:1` restores it.
+  `config.hscale` still sets the starting value.
 * Dark and light themes, toggleable in the page and remembered per browser.
 * Hover time cursor with a live cycle and signal readout.
 * Click twice to measure an interval; the delta is shown in cycles.
@@ -97,8 +104,9 @@ Edge shapes: `-` straight, `~` spline, `-|` / `|-` / `-|-` orthogonal, with
 
 ## Keyboard
 
-`+` / `-` zoom · `0` reset · `f` fit · `t` theme · `/` search · `esc` clear
-measurement · right-click clears markers.
+`+` / `-` zoom · `[` / `]` narrow / widen the time unit · `0` reset both ·
+`f` fit · `t` theme · `/` search · `esc` clear measurement · right-click clears
+markers.
 
 ## CLI
 
