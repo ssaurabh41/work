@@ -14,8 +14,9 @@ python3 wavegen.py --svg diagram.svg        # also emit a standalone SVG
 ```
 
 The shipped `in.json` is a full AXI4 write burst followed by a read burst —
-24 cycles, 26 signals, five channel groups, with slave back-pressure on the W
-channel and master throttling on the R channel.
+54 cycles, 26 signals, five channel groups, with slave back-pressure on the W
+channel and master throttling on the R channel. Its 32-cycle memory latency is
+folded away, so it renders in the width of 24 cycles.
 
 ## Model
 
@@ -38,11 +39,23 @@ both a rising and a falling edge inside a single step.
 | `=`     | data / bus brick, neutral colour                              |
 | `2`–`9` | data / bus brick, eight further colour slots                  |
 | `.`     | repeat — extends a level or bus, or emits another clock pulse |
+| `c{n}`  | run length — the brick `c` spans **n steps** *(extension)*     |
 | `\|`    | gap — draws a break symbol over the held value                |
 | ` `     | blank, nothing drawn                                          |
 
 Each `=` or `2`–`9` brick consumes one entry from that signal's `data` array;
 a following `.` extends the brick without consuming another value.
+
+`c{n}` saves counting dots by hand: `"1{32}"` is 32 cycles high, `"P{54}"` is 54
+clock pulses, `"={4}"` is one bus brick four steps wide. `{` is not a wave
+character, so this cannot change an existing diagram. It works in `node`
+strings too, so `".{52}f"` puts node `f` at step 52.
+
+**Toggling on the clock's falling edge:** a `p` clock is high for the first half
+of a step and low for the second, so its falling edges sit at 0.5, 1.5, 2.5 …
+Give a signal `"phase": -0.5` and its transitions land exactly there. (`+0.5`
+also lands on falling edges but shifts the wave *left*, losing a half-step off
+the front.)
 
 ## Signal keys
 
@@ -56,6 +69,7 @@ a following `.` extends the brick without consuming another value.
 | `phase`  | shift, in cycles, for this signal                          |
 | `color`  | stroke / label colour override *(extension)*               |
 | `desc`   | tooltip shown on the signal name *(extension)*             |
+| `index`  | virtual step-number row, see below *(extension)*           |
 
 Nest signals in an array whose first element is a string to form a labelled,
 collapsible group; groups may nest arbitrarily. An empty object `{}` is a spacer.
@@ -70,9 +84,10 @@ collapsible group; groups may nest arbitrarily. An empty object `{}` is a spacer
 | `foot`   | `{text}` — caption below the diagram                                 |
 | `edge`   | annotation arrows, e.g. `"a~>b setup"`                               |
 | `marks`  | highlight bands / cursors *(extension)*                              |
+| `folds`  | spans of dead time collapsed to a break band *(extension)*            |
 
 `config` accepts `theme` (`dark`\|`light`), `hscale`, `vscale`, `grid`,
-`clockArrows` (`explicit`\|`all`), `title`, and `subtitle`.
+`clockArrows` (`explicit`\|`all`), `foldWidth`, `title`, and `subtitle`.
 
 `marks` entries are either a band — `{"from": 2, "to": 4, "label": "AW",
 "color": "indigo"}` — or a cursor — `{"at": 8, "label": "WLAST"}`. Named colours
@@ -81,6 +96,40 @@ are `indigo`, `teal`, `amber`, `rose`, `cyan`, `lime`, `orange`, `violet`,
 
 Edge shapes: `-` straight, `~` spline, `-|` / `|-` / `-|-` orthogonal, with
 `<` and `>` adding arrowheads (`a<->b`, `c~>d`).
+
+## Folding dead time
+
+A long pipeline delay costs a lot of width and says little. Declare the idle
+span once, in real cycle numbers, and it collapses to a narrow break band:
+
+```json
+"folds": [ { "from": 15, "to": 47, "label": "32 cycles — memory latency" } ]
+```
+
+`{"from": 15, "cycles": 32}` is equivalent. The shipped `in.json` is 54 cycles
+wide but renders in the space of 23.6 — the ruler jumps 14 → 47 across a torn
+band, and `config.foldWidth` (default 1.6 cycle-widths) sets how much room the
+band keeps.
+
+Time stays honest: hovering reports true cycle numbers on both sides, a
+measurement spanning the fold counts the cycles that were elided (35, not the
+4.6 you can see), and hovering inside the band names the folded span rather
+than inventing a fractional cycle.
+
+A fold that would hide a real transition is refused, naming the signal and
+cycle — clock-only rows are exempt, since eliding them is the point. Add
+`"force": true` to that fold to render it anyway.
+
+## Step-index row
+
+```json
+{ "name": "step", "index": true }
+```
+
+A virtual row numbering every step 0, 1, 2 … Optional and purely for
+readability; its numbers jump across a fold, which makes the elided span
+obvious next to the signals rather than only at the top ruler. Accepts
+`{"from": 100, "every": 5}` to offset or thin the numbering.
 
 ## Extensions over stock WaveDrom
 
@@ -91,6 +140,11 @@ Edge shapes: `-` straight, `~` spline, `-|` / `|-` / `-|-` orthogonal, with
   in the tooltip), and cycle numbers thin out to avoid collisions. `Fit` sets the
   time unit so the whole diagram fits the window; `1:1` restores it.
   `config.hscale` still sets the starting value.
+* **Folded dead time** — collapse long idle spans (a pipeline delay, a memory
+  latency) to a narrow break band, with the ruler jumping across it and
+  measurements still counting the real elapsed cycles.
+* **Step-index row** and **`c{n}` run-length** syntax, so long diagrams stay
+  readable to write as well as to read.
 * Dark and light themes, toggleable in the page and remembered per browser.
 * Hover time cursor with a live cycle and signal readout.
 * Click twice to measure an interval; the delta is shown in cycles.

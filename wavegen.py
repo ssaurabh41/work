@@ -175,6 +175,7 @@ def theme_vars(name: str) -> dict[str, str]:
             "--wg-edge-chip": "#FCF2E0",
             "--wg-cursor": "#C9761A",
             "--wg-measure": "#2E5FD0",
+            "--wg-fold": "#8A6FB8",
             "--wg-hatch": "#AAB6C9",
             "--wg-hatch-bg": "#F0F3F8",
             "--wg-shadow": "rgba(20, 30, 55, 0.10)",
@@ -202,6 +203,7 @@ def theme_vars(name: str) -> dict[str, str]:
             "--wg-edge-chip": "#2A2216",
             "--wg-cursor": "#F0C674",
             "--wg-measure": "#5B8DEF",
+            "--wg-fold": "#A98BD8",
             "--wg-hatch": "#54627C",
             "--wg-hatch-bg": "#141A25",
             "--wg-shadow": "rgba(0, 0, 0, 0.45)",
@@ -246,6 +248,28 @@ class Wave:
     end: float = 0.0                                  # last occupied cycle
 
 
+_REPEAT_RE = re.compile(r"([^{}])\{(\d+)\}")
+
+
+def expand_repeats(wave: str) -> str:
+    """Expand ``c{n}`` run-length syntax: the brick ``c`` spans n steps.
+
+    ``"1{32}"`` is ``"1"`` followed by 31 dots, so a 32-cycle hold is written
+    once rather than counted out by hand.  ``"P{24}"`` is 24 clock pulses with
+    a single edge marker, and ``"={4}"`` is one bus brick four steps wide.
+    ``{`` is not a wave character, so this cannot change an existing diagram.
+    """
+    def sub(m: re.Match) -> str:
+        return m.group(1) + "." * max(int(m.group(2)) - 1, 0)
+    prev = None
+    # Loop so that "0.{3}" style chains collapse fully, but bound the work.
+    for _ in range(8):
+        if wave == prev:
+            break
+        prev, wave = wave, _REPEAT_RE.sub(sub, wave)
+    return wave
+
+
 def parse_wave(wave: str, data: Any, period: float = 1.0, phase: float = 0.0,
                clock_arrows: str = "explicit") -> Wave:
     """Expand a wave string into positioned bricks.
@@ -269,7 +293,7 @@ def parse_wave(wave: str, data: Any, period: float = 1.0, phase: float = 0.0,
     di = 0
     prev_char: str | None = None
 
-    for raw in wave or "":
+    for raw in expand_repeats(wave or ""):
         if raw == REPEAT_CHAR:
             ch, fresh = prev_char, False
         else:
@@ -357,6 +381,57 @@ class Group:
     last: int                       # last row index (inclusive)
 
 
+@dataclass
+class Fold:
+    """A span of dead time collapsed to a narrow break band."""
+    a: float                        # first folded cycle
+    b: float                        # first cycle after the fold
+    label: str = ""
+    force: bool = False             # render even if a signal toggles inside
+
+    @property
+    def cycles(self) -> float:
+        return self.b - self.a
+
+    def text(self) -> str:
+        if self.label:
+            return self.label
+        n = self.cycles
+        n = int(n) if float(n).is_integer() else n
+        return f"{n} cycles"
+
+
+def normalize_folds(spec: Any, total: float) -> list[Fold]:
+    """Clamp, drop degenerate, sort, and merge overlapping folds."""
+    raw: list[Fold] = []
+    for item in spec or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            a = float(item.get("from", item.get("at", 0)))
+            b = float(item.get("to", a))
+        except (TypeError, ValueError):
+            continue
+        if "cycles" in item:                    # {"from": 10, "cycles": 32}
+            b = a + float(item["cycles"])
+        a, b = max(0.0, min(a, b)), min(total, max(a, b))
+        if b - a <= 0:
+            continue
+        raw.append(Fold(a, b, str(item.get("label", "")), bool(item.get("force"))))
+
+    raw.sort(key=lambda f: f.a)
+    merged: list[Fold] = []
+    for f in raw:
+        if merged and f.a <= merged[-1].b:
+            last = merged[-1]
+            last.b = max(last.b, f.b)
+            last.label = last.label or f.label
+            last.force = last.force or f.force
+        else:
+            merged.append(f)
+    return merged
+
+
 def flatten(items: Any, depth: int = 0, rows: list[Row] | None = None,
             groups: list[Group] | None = None) -> tuple[list[Row], list[Group]]:
     """Flatten the nested WaveJSON ``signal`` tree into rows plus group spans."""
@@ -372,7 +447,12 @@ def flatten(items: Any, depth: int = 0, rows: list[Row] | None = None,
             if len(rows) > first:
                 groups.append(Group(label, depth, first, len(rows) - 1))
         elif isinstance(item, dict):
-            kind = "signal" if (item.get("name") or item.get("wave")) else "spacer"
+            if item.get("index"):
+                kind = "index"
+            elif item.get("name") or item.get("wave"):
+                kind = "signal"
+            else:
+                kind = "spacer"
             rows.append(Row(kind, item, depth, len(rows)))
         else:
             rows.append(Row("spacer", {}, depth, len(rows)))
@@ -421,6 +501,13 @@ class Diagram:
             self.cycles = max(self.cycles, row.wave.end)
         self.cycles = max(self.cycles, 1.0)
 
+        # Folded (dead-time) spans.  The time axis becomes piecewise: folded
+        # cycles collapse to a fixed narrow band, everything else is linear.
+        self.fold_w = float(cfg.get("foldWidth", 1.6) or 1.6)
+        self.folds = normalize_folds(doc.get("folds"), self.cycles)
+        self._check_folds()
+        self.vcycles = self._u(self.cycles)      # width in *visible* cycle units
+
         # Geometry
         self.cw = CYCLE_W * self.hscale
         self.row_h = ROW_H * self.vscale
@@ -431,16 +518,17 @@ class Diagram:
 
         # Vertical layout.  Annotation bands get their own lane above the ruler so
         # their labels never collide with the cycle numbers.
-        self.mark_lane = MARK_LANE_H if self.marks else 0.0
+        self.mark_lane = MARK_LANE_H if (self.marks or self.folds) else 0.0
         self.ruler_y = self.mark_lane
         y = self.ruler_y + RULER_H + 10
         for row in self.rows:
-            row.height = self.row_h if row.kind == "signal" else SPACER_H * self.vscale
+            row.height = (self.row_h if row.kind in ("signal", "index")
+                          else SPACER_H * self.vscale)
             row.y = y
             y += row.height
         self.rows_bottom = y
         self.height = y + (24 if self.edges else 14)
-        self.width = self.name_w + self.cycles * self.cw + PAD_R
+        self.width = self.name_w + self.vcycles * self.cw + PAD_R
 
         self.nodes = self._collect_nodes()
 
@@ -452,9 +540,55 @@ class Diagram:
         lo = hi + self.wave_h
         return hi, lo, (hi + lo) / 2.0
 
+    def _u(self, cycle: float) -> float:
+        """Real cycle -> visible cycle units, collapsing folded spans."""
+        u = 0.0
+        prev = 0.0
+        for f in self.folds:
+            if cycle <= f.a:
+                break
+            u += f.a - prev
+            if cycle < f.b:                      # inside the band: interpolate
+                return u + self.fold_w * (cycle - f.a) / f.cycles
+            u += self.fold_w
+            prev = f.b
+        return u + cycle - prev
+
     def x_of(self, cycle: float) -> float:
         """Cycle position -> x inside the wave group (gutter already stripped)."""
-        return cycle * self.cw
+        return self._u(cycle) * self.cw
+
+    def in_fold(self, cycle: float) -> bool:
+        """True when a cycle falls strictly inside a folded span."""
+        return any(f.a < cycle < f.b for f in self.folds)
+
+    def _check_folds(self) -> None:
+        """Refuse to hide a real transition inside a fold.
+
+        A clock toggles every cycle, so clock-only rows never count -- eliding
+        them is the whole point.  Anything else changing state inside a fold
+        would be silently lost, which is a bug in the diagram, not a style.
+        """
+        bad: list[str] = []
+        for f in self.folds:
+            if f.force:
+                continue
+            for row in self.rows:
+                if row.kind != "signal" or not row.wave or not row.wave.bricks:
+                    continue
+                if all(b.kind in ("clock", "blank") for b in row.wave.bricks):
+                    continue
+                for br in row.wave.bricks:
+                    for edge in (br.start, br.start + br.span):
+                        if f.a < edge < f.b:
+                            bad.append(
+                                f'  {row.sig.get("name", "?")} changes at cycle '
+                                f'{edge:g}, inside fold {f.a:g}-{f.b:g}')
+        if bad:
+            raise SystemExit(
+                "wavegen: folds would hide real transitions:\n"
+                + "\n".join(sorted(set(bad))[:12])
+                + '\nMove the fold, or set "force": true on it to render anyway.')
 
     def _collect_nodes(self) -> dict[str, tuple[float, float]]:
         nodes: dict[str, tuple[float, float]] = {}
@@ -467,7 +601,7 @@ class Diagram:
             period = float(row.sig.get("period", 1) or 1)
             phase = float(row.sig.get("phase", 0) or 0)
             _, _, mid = self.row_rails(row)
-            for i, ch in enumerate(spec):
+            for i, ch in enumerate(expand_repeats(spec)):
                 if ch in ".| ":
                     continue
                 nodes[ch] = (self.x_of(i * period - phase), mid)
@@ -719,20 +853,25 @@ def render_ruler(dg: Diagram) -> str:
     tock = head.get("tock")
     every = int(head.get("every", 1) or 1)
 
+    visible = sum(1 for c in range(total) if not dg.in_fold(c))
     if tick is None and tock is None:
         base, centred = 0, True
-        every = 1 if total <= 40 else (2 if total <= 80 else 5)
+        every = 1 if visible <= 40 else (2 if visible <= 80 else 5)
     elif tock is not None:
         base, centred = int(tock), True
     else:
         base, centred = int(tick), False
 
     out = [f'<rect class="wg-rulerbg" id="wg-rulerbg" x="0" y="0" '
-           f'width="{fmt(dg.cycles * dg.cw)}" height="{fmt(RULER_H)}"/>']
+           f'width="{fmt(dg.vcycles * dg.cw)}" height="{fmt(RULER_H)}"/>']
     y = RULER_H - 8
     # Every tick is emitted with its cycle index so the page can re-thin them as
     # the time unit changes; `every` only decides what is visible at base scale.
     for c in range(total + (0 if centred else 1)):
+        # A folded cycle has no room on the axis; its number is elided and the
+        # ruler jumps, which is what tells the reader time was skipped.
+        if dg.in_fold(c + (0.5 if centred else 0.0)) or dg.in_fold(c):
+            continue
         x = dg.x_of(c + (0.5 if centred else 0.0))
         strong = (c % every == 0)
         hide = "" if strong else ' style="display:none"'
@@ -753,6 +892,8 @@ def render_grid(dg: Diagram) -> str:
     y0, y1 = dg.ruler_y + RULER_H, dg.rows_bottom
     total = int(dg.cycles + 0.999)
     for c in range(total + 1):
+        if dg.in_fold(c):
+            continue
         x = dg.x_of(c)
         cls = "wg-gridline" + (" wg-gridline-strong" if c % 5 == 0 else "")
         out.append(f'<line class="{cls}" x1="{fmt(x)}" y1="{fmt(y0)}" '
@@ -760,12 +901,83 @@ def render_grid(dg: Diagram) -> str:
     return "".join(out)
 
 
+def render_index_row(dg: Diagram, row: Row) -> str:
+    """A virtual row numbering every step: 0, 1, 2 ...
+
+    Declared with ``{"name": "step", "index": true}``.  Purely for readability:
+    it makes the step count legible next to the signals instead of only at the
+    top ruler, and its numbers jump across a fold so the elided span is obvious.
+    """
+    opt = row.sig.get("index")
+    opt = opt if isinstance(opt, dict) else {}
+    start = int(opt.get("from", 0))
+    every = max(1, int(opt.get("every", 1)))
+
+    hi, lo, mid = dg.row_rails(row)
+    h = lo - hi
+    out = []
+    for c in range(int(dg.cycles + 0.999)):
+        if dg.in_fold(c + 0.5):
+            continue
+        xs, xe = dg.x_of(c), dg.x_of(c + 1)
+        out.append(
+            f'<rect class="wg-idxcell{" wg-idxalt" if c % 2 else ""}" '
+            f'x="{fmt(xs)}" y="{fmt(hi)}" width="{fmt(max(xe - xs, 0))}" '
+            f'height="{fmt(h)}" rx="2"/>')
+        if c % every == 0:
+            cx = (xs + xe) / 2.0
+            out.append(
+                f'<text class="wg-idxtext wg-nox" x="{fmt(cx)}" y="{fmt(mid)}" '
+                f'dy="0.34em" data-ax="{fmt(cx)}" data-idxw="{fmt(xe - xs)}">'
+                f'{start + c}</text>')
+    return "".join(out)
+
+
+def render_folds(dg: Diagram) -> str:
+    """Break bands over the folded spans, drawn on top of the waves.
+
+    The band is painted with the page ground and edged with two torn lines, so
+    every trace passing under it reads as held-but-elided rather than changed.
+    """
+    if not dg.folds:
+        return ""
+    out = []
+    y0, y1 = dg.ruler_y, dg.rows_bottom
+    h = y1 - y0
+    for f in dg.folds:
+        xa, xb = dg.x_of(f.a), dg.x_of(f.b)
+        out.append(f'<rect class="wg-foldband" x="{fmt(xa)}" y="{fmt(y0)}" '
+                   f'width="{fmt(xb - xa)}" height="{fmt(h)}"/>')
+        for x in (xa, xb):
+            out.append(f'<path class="wg-foldedge" d="{_torn_line(x, y0, y1)}"/>')
+        out.append(_chip((xa + xb) / 2.0, y0 - 5, f.text(),
+                         "var(--wg-fold)", anchor="middle"))
+    return "".join(out)
+
+
+def _torn_line(x: float, y0: float, y1: float,
+               amp: float = 3.6, period: float = 15.0) -> str:
+    """A vertical line with a short-period wobble, so it reads as a tear.
+
+    One gentle curve over the full height is invisible at this scale; the
+    break only registers when the wobble repeats every centimetre or so.
+    """
+    n = max(2, round((y1 - y0) / period))
+    step = (y1 - y0) / n
+    d = [f"M {fmt(x)} {fmt(y0)}"]
+    for i in range(n):
+        ya = y0 + step * i
+        cx = x + (amp if i % 2 == 0 else -amp)
+        d.append(f"Q {fmt(cx)} {fmt(ya + step / 2)} {fmt(x)} {fmt(ya + step)}")
+    return " ".join(d)
+
+
 def render_row_backgrounds(dg: Diagram) -> str:
     out = []
-    w = dg.cycles * dg.cw
+    w = dg.vcycles * dg.cw
     sig_i = 0
     for row in dg.rows:
-        if row.kind != "signal":
+        if row.kind not in ("signal", "index"):
             continue
         if sig_i % 2 == 1:
             out.append(f'<rect class="wg-rowalt" x="0" y="{fmt(row.y)}" '
@@ -993,6 +1205,14 @@ SVG_CSS = """
 .wg-row.is-dim{opacity:.18}
 .wg-row{transition:opacity .15s ease}
 
+.wg-foldband{fill:var(--wg-bg)}
+.wg-foldedge{fill:none;stroke:var(--wg-fold);stroke-width:1.5;
+  stroke-linecap:round;opacity:.8;vector-effect:non-scaling-stroke}
+.wg-idxcell{fill:var(--wg-panel-2);opacity:.9}
+.wg-idxcell.wg-idxalt{opacity:.45}
+.wg-idxtext{font-family:var(--wg-mono);font-size:10.5px;fill:var(--wg-faint);
+  text-anchor:middle;font-variant-numeric:tabular-nums;pointer-events:none}
+
 .wg-markband{opacity:.075}
 .wg-markedge{stroke-width:1;stroke-dasharray:3 3;opacity:.5}
 .wg-markline{stroke-width:1.4;stroke-dasharray:5 3;opacity:.75}
@@ -1054,18 +1274,22 @@ def build_svg(dg: Diagram, standalone: bool = False, theme: str | None = None) -
     waves.append(f'<g class="wg-layer-ruler" transform="translate(0,{fmt(dg.ruler_y)})">'
                  f'{render_ruler(dg)}</g>')
 
-    w = dg.cycles * dg.cw
+    w = dg.vcycles * dg.cw
     for row in dg.rows:
-        if row.kind != "signal":
+        if row.kind not in ("signal", "index"):
             continue
         name = esc(row.sig.get("name", ""))
+        content = (render_index_row(dg, row) if row.kind == "index"
+                   else render_row_wave(dg, row))
         waves.append(
             f'<g class="wg-row" data-name="{name.lower()}" data-y="{fmt(row.y)}">'
             f'<rect class="wg-rowhit" x="0" y="{fmt(row.y)}" width="{fmt(w)}" '
             f'height="{fmt(row.height)}"/>'
-            f'{render_row_wave(dg, row)}'
+            f'{content}'
             f'</g>')
 
+    # Break bands sit above the traces so a folded span reads as elided time.
+    waves.append(f'<g class="wg-layer-folds">{render_folds(dg)}</g>')
     waves.append(f'<g class="wg-layer-edges">{render_edges(dg)}</g>')
 
     # Interactive overlays (driven by the page script).
@@ -1108,7 +1332,9 @@ def build_svg(dg: Diagram, standalone: bool = False, theme: str | None = None) -
         f'data-cw="{fmt(dg.cw)}" data-namew="{fmt(dg.name_w)}" '
         f'data-cycles="{fmt(dg.cycles)}" data-basew="{fmt(dg.width)}" '
         f'data-baseh="{fmt(dg.height)}" data-padr="{fmt(PAD_R)}" '
-        f'data-busfont="{fmt(BUS_FONT)}">'
+        f'data-busfont="{fmt(BUS_FONT)}" data-vcycles="{fmt(dg.vcycles)}" '
+        f'data-foldw="{fmt(dg.fold_w)}" '
+        f'data-folds="{esc(json.dumps([[f.a, f.b] for f in dg.folds]))}">'
         f'{style}{"".join(body)}</svg>'
     )
 
@@ -1246,13 +1472,49 @@ PAGE_JS = """
   var rulerbg=document.getElementById('wg-rulerbg');
   var hatch=document.getElementById('wg-hatchpat');
   var range=document.getElementById('wg-cwrange');
+  /* The time axis is piecewise when folds are present: a folded span collapses
+     to FOLDW cycle-units.  u() maps a real cycle to visible units and cyc() is
+     its inverse, so hover and measurement always report true cycle numbers. */
+  var FOLDS=JSON.parse(svg.dataset.folds||'[]');
+  var FOLDW=parseFloat(svg.dataset.foldw)||0;
+  var VCYCLES=parseFloat(svg.dataset.vcycles);
+  function u(cycle){
+    var acc=0, prev=0;
+    for(var i=0;i<FOLDS.length;i++){
+      var a=FOLDS[i][0], b=FOLDS[i][1];
+      if(cycle<=a) break;
+      acc+=a-prev;
+      if(cycle<b) return acc+FOLDW*(cycle-a)/(b-a);
+      acc+=FOLDW; prev=b;
+    }
+    return acc+cycle-prev;
+  }
+  function cyc(units){
+    var acc=0, prev=0;
+    for(var i=0;i<FOLDS.length;i++){
+      var a=FOLDS[i][0], b=FOLDS[i][1];
+      var head=acc+(a-prev);
+      if(units<=head) break;
+      if(units<head+FOLDW) return a+(b-a)*(units-head)/FOLDW;
+      acc=head+FOLDW; prev=b;
+    }
+    return prev+(units-acc);
+  }
+  function foldAt(cycle){
+    for(var i=0;i<FOLDS.length;i++){
+      if(cycle>FOLDS[i][0] && cycle<FOLDS[i][1]) return FOLDS[i];
+    }
+    return null;
+  }
+  function inFold(cycle){ return foldAt(cycle)!==null; }
   /* Overlays live inside the scaled group, so they are positioned in unscaled
-     units: one cycle is BASECW wide there, whatever the live time unit is. */
-  function ux(cycle){ return cycle*BASECW; }
+     units: one visible cycle unit is BASECW wide there. */
+  function ux(cycle){ return u(cycle)*BASECW; }
   var cwOut=document.getElementById('wg-cwval');
   var noxEls=[].slice.call(svg.querySelectorAll('.wg-nox'));
   var busText=noxEls.filter(function(el){return el.dataset.avail!==undefined;});
   var ticks=[].slice.call(svg.querySelectorAll('.wg-tick'));
+  var idxText=[].slice.call(svg.querySelectorAll('.wg-idxtext'));
   var MINCW=parseFloat(range.min), MAXCW=parseFloat(range.max);
 
   function counterScale(el,k){
@@ -1271,7 +1533,7 @@ PAGE_JS = """
     CW=Math.min(MAXCW,Math.max(MINCW,v));
     var k=CW/BASECW;
     xscale.setAttribute('transform','scale('+k.toFixed(6)+',1)');
-    BASEW=NAMEW+CYCLES*CW+PADR;
+    BASEW=NAMEW+VCYCLES*CW+PADR;
     svg.setAttribute('width',BASEW.toFixed(2));
     svg.setAttribute('viewBox','0 0 '+BASEW.toFixed(2)+' '+BASEH);
     canvasbg.setAttribute('width',BASEW.toFixed(2));
@@ -1287,6 +1549,11 @@ PAGE_JS = """
     if(every>2) every=Math.ceil(every/5)*5;
     ticks.forEach(function(t){
       t.style.display=(parseInt(t.dataset.cyc,10)%every===0)?'':'none';
+    });
+    /* Step-index cells hide their number once it no longer fits the cell. */
+    idxText.forEach(function(t){
+      var room=parseFloat(t.dataset.idxw)*k;
+      t.style.display=(room>=t.textContent.length*7+4)?'':'none';
     });
     if(hatch) hatch.setAttribute('patternTransform',
       'scale('+(1/k).toFixed(5)+',1) rotate(45)');
@@ -1308,7 +1575,7 @@ PAGE_JS = """
        then shrinking overall if the names alone still overflow. */
     var avail=stage.clientWidth-24;
     zoom=1;
-    applyCw((avail-NAMEW-PADR)/CYCLES);
+    applyCw((avail-NAMEW-PADR)/VCYCLES);
     if(BASEW>avail){ zoom=avail/BASEW; applyZoom(); }
   }
   range.addEventListener('input',function(){applyCw(parseFloat(range.value),true);});
@@ -1333,8 +1600,10 @@ PAGE_JS = """
     var pt=svg.createSVGPoint(); pt.x=evt.clientX; pt.y=evt.clientY;
     return pt.matrixTransform(ctm.inverse()).x - NAMEW;
   }
-  function toCycle(x){ return x/CW; }
+  function toCycle(x){ return cyc(x/CW); }
   function clampCycle(c){ return Math.min(CYCLES,Math.max(0,c)); }
+  /* Snap to half-cycles, but never onto a cycle hidden inside a fold. */
+  function snap(c){ var s=Math.round(c*2)/2; return inFold(s)?c:s; }
 
   /* ---- hover cursor ------------------------------------------------ */
   var line=document.getElementById('wg-cursorline');
@@ -1352,7 +1621,7 @@ PAGE_JS = """
     var x=svgX(e);
     if(x===null||x<0){clearHover();return;}
     var c=clampCycle(toCycle(x));
-    var snapped=Math.round(c*2)/2;
+    var snapped=snap(c);
     var px=ux(snapped);
     svg.classList.add('wg-cursor-on');
     line.setAttribute('x1',px); line.setAttribute('x2',px);
@@ -1399,7 +1668,7 @@ PAGE_JS = """
   }
   svg.addEventListener('click',function(e){
     var x=svgX(e); if(x===null||x<0) return;
-    var c=Math.round(clampCycle(toCycle(x))*2)/2;
+    var c=snap(clampCycle(toCycle(x)));
     if(mA===null||mB!==null){mA=c;mB=null;svg.classList.remove('wg-m-on');}
     else{mB=c;drawMeasure();}
     updateReadout(c,null);
@@ -1410,7 +1679,13 @@ PAGE_JS = """
 
   function updateReadout(cycle,row){
     var bits=[];
-    if(cycle!==null&&cycle!==undefined) bits.push('cycle <b>'+cycle.toFixed(1)+'</b>');
+    var f=(cycle===null||cycle===undefined)?null:foldAt(cycle);
+    if(f){
+      /* Inside a band, 32 cycles share ~100px; a fractional cycle would be
+         noise, so name the folded span instead. */
+      bits.push('folded <b>'+f[0]+'\\u2013'+f[1]+'</b> ('+(f[1]-f[0])+' cyc)');
+    }
+    else if(cycle!==null&&cycle!==undefined) bits.push('cycle <b>'+cycle.toFixed(1)+'</b>');
     if(row&&row.dataset.name) bits.push(row.dataset.name);
     if(mA!==null&&mB!==null) bits.push('\\u0394 <b>'+(Math.round(Math.abs(mB-mA)*100)/100)+'</b> cyc');
     else if(mA!==null) bits.push('A@'+mA.toFixed(1)+' \\u2026 click B');
