@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AMBA AXI4 — Write Burst followed by Read Burst</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{--wg-bg:#FAFBFD;--wg-panel:#FFFFFF;--wg-panel-2:#F2F5FA;--wg-border:#E0E5EF;--wg-text:#1B2233;--wg-muted:#5F6B82;--wg-faint:#94A0B5;--wg-accent:#2E5FD0;--wg-accent-soft:#E5EDFC;--wg-wave:#2A3854;--wg-wave-clk:#1F7A8C;--wg-grid:#EBEFF6;--wg-grid-strong:#D8DFEA;--wg-row-alt:rgba(15, 25, 45, 0.022);--wg-row-hover:rgba(46, 95, 208, 0.055);--wg-edge:#B4701A;--wg-edge-text:#7A4B0E;--wg-edge-chip:#FCF2E0;--wg-cursor:#C9761A;--wg-measure:#2E5FD0;--wg-hatch:#AAB6C9;--wg-hatch-bg:#F0F3F8;--wg-shadow:rgba(20, 30, 55, 0.10);--wg-b0-fill:#EEF2F8;--wg-b0-stroke:#A5B5CD;--wg-b0-text:#33405A;--wg-b1-fill:#E7EAFF;--wg-b1-stroke:#7A85E8;--wg-b1-text:#2C348E;--wg-b2-fill:#DAF5EF;--wg-b2-stroke:#3AA894;--wg-b2-text:#0F5449;--wg-b3-fill:#FCF0D6;--wg-b3-stroke:#C4952F;--wg-b3-text:#694C0E;--wg-b4-fill:#FDE4EB;--wg-b4-stroke:#D4778F;--wg-b4-text:#78273F;--wg-b5-fill:#D8F0FA;--wg-b5-stroke:#469FC4;--wg-b5-text:#0E475C;--wg-b6-fill:#E8F5D6;--wg-b6-stroke:#7BAE44;--wg-b6-text:#3C5316;--wg-b7-fill:#FDEAD8;--wg-b7-stroke:#D6873F;--wg-b7-text:#77401A;--wg-b8-fill:#EFE3FB;--wg-b8-stroke:#A272D4;--wg-b8-text:#4C2270;--wg-mark-indigo:#5A66D0;--wg-mark-teal:#2A9282;--wg-mark-amber:#B3861F;--wg-mark-rose:#C4607B;--wg-mark-cyan:#2E8CB2;--wg-mark-lime:#679B33;--wg-mark-orange:#C4732C;--wg-mark-violet:#8B54C0;--wg-mark-slate:#6C7C96}
+[data-theme="dark"]{--wg-bg:#0B0E14;--wg-panel:#111621;--wg-panel-2:#161C29;--wg-border:#212938;--wg-text:#DCE3F0;--wg-muted:#8391A8;--wg-faint:#5C6A82;--wg-accent:#5B8DEF;--wg-accent-soft:#18243B;--wg-wave:#AFC1E0;--wg-wave-clk:#5FCBB8;--wg-grid:#171E2B;--wg-grid-strong:#232C3E;--wg-row-alt:rgba(255, 255, 255, 0.017);--wg-row-hover:rgba(91, 141, 239, 0.085);--wg-edge:#E0A458;--wg-edge-text:#F3D7A8;--wg-edge-chip:#2A2216;--wg-cursor:#F0C674;--wg-measure:#5B8DEF;--wg-hatch:#54627C;--wg-hatch-bg:#141A25;--wg-shadow:rgba(0, 0, 0, 0.45);--wg-b0-fill:#242E42;--wg-b0-stroke:#4E617F;--wg-b0-text:#C8D6EE;--wg-b1-fill:#262B5C;--wg-b1-stroke:#6B76DC;--wg-b1-text:#C2C9FF;--wg-b2-fill:#123E39;--wg-b2-stroke:#2FA391;--wg-b2-text:#A2F0E1;--wg-b3-fill:#43331A;--wg-b3-stroke:#C99A3C;--wg-b3-text:#F5DEA6;--wg-b4-fill:#48212F;--wg-b4-stroke:#C86A88;--wg-b4-text:#FBC6D5;--wg-b5-fill:#0F3849;--wg-b5-stroke:#3A9AC1;--wg-b5-text:#ABE4F7;--wg-b6-fill:#2A3D1A;--wg-b6-stroke:#7DAE48;--wg-b6-text:#D4EFAC;--wg-b7-fill:#482C16;--wg-b7-stroke:#CE7F3C;--wg-b7-text:#F8D1AB;--wg-b8-fill:#381E4F;--wg-b8-stroke:#9B62CE;--wg-b8-text:#DFC3F7;--wg-mark-indigo:#6B76DC;--wg-mark-teal:#2FA391;--wg-mark-amber:#C99A3C;--wg-mark-rose:#C86A88;--wg-mark-cyan:#3A9AC1;--wg-mark-lime:#7DAE48;--wg-mark-orange:#CE7F3C;--wg-mark-violet:#9B62CE;--wg-mark-slate:#5C6B85}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --wg-sans:'Inter',ui-sans-serif,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --wg-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+html,body{height:100%}
+body{background:var(--wg-bg);color:var(--wg-text);font-family:var(--wg-sans);
+  font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column}
+
+.wg-topbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:12px 20px;background:var(--wg-panel);
+  border-bottom:1px solid var(--wg-border);position:sticky;top:0;z-index:20}
+.wg-brand{display:flex;flex-direction:column;gap:1px;margin-right:auto;min-width:0}
+.wg-title{font-size:15px;font-weight:650;letter-spacing:-.01em;color:var(--wg-text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wg-subtitle{font-size:11.5px;color:var(--wg-muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+
+.wg-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wg-seg{display:flex;align-items:center;background:var(--wg-panel-2);
+  border:1px solid var(--wg-border);border-radius:8px;overflow:hidden}
+.wg-seg button{background:none;border:none;color:var(--wg-muted);cursor:pointer;
+  font-family:var(--wg-mono);font-size:12px;padding:6px 10px;line-height:1;
+  transition:background .12s,color .12s}
+.wg-seg button:hover{background:var(--wg-accent-soft);color:var(--wg-text)}
+.wg-seg button:focus-visible{outline:2px solid var(--wg-accent);outline-offset:-2px}
+.wg-seg .wg-zoomval{font-family:var(--wg-mono);font-size:11.5px;color:var(--wg-muted);
+  padding:0 8px;min-width:52px;text-align:center;
+  font-variant-numeric:tabular-nums;border-left:1px solid var(--wg-border);
+  border-right:1px solid var(--wg-border)}
+
+.wg-btn{background:var(--wg-panel-2);border:1px solid var(--wg-border);
+  border-radius:8px;color:var(--wg-muted);cursor:pointer;font-family:var(--wg-sans);
+  font-size:12px;font-weight:550;padding:6px 12px;transition:all .12s}
+.wg-btn:hover{background:var(--wg-accent-soft);color:var(--wg-text);
+  border-color:var(--wg-accent)}
+.wg-btn:focus-visible{outline:2px solid var(--wg-accent);outline-offset:2px}
+.wg-btn.is-on{background:var(--wg-accent);border-color:var(--wg-accent);color:#fff}
+
+.wg-search{background:var(--wg-panel-2);border:1px solid var(--wg-border);
+  border-radius:8px;color:var(--wg-text);font-family:var(--wg-sans);font-size:12px;
+  padding:6px 10px;width:150px;transition:border-color .12s}
+.wg-search::placeholder{color:var(--wg-faint)}
+.wg-search:focus{outline:none;border-color:var(--wg-accent)}
+
+.wg-stage{flex:1;min-height:0;position:relative;overflow:auto;padding:18px 0 24px}
+.wg-stage::-webkit-scrollbar{height:11px;width:11px}
+.wg-stage::-webkit-scrollbar-thumb{background:var(--wg-border);border-radius:6px}
+.wg-stage::-webkit-scrollbar-thumb:hover{background:var(--wg-faint)}
+#wg-svg{display:block;user-select:none;cursor:crosshair}
+.wg-gutter{filter:drop-shadow(2px 0 6px var(--wg-shadow))}
+
+.wg-footbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:9px 20px;background:var(--wg-panel);border-top:1px solid var(--wg-border);
+  font-size:11.5px;color:var(--wg-muted)}
+.wg-foottext{margin-right:auto}
+.wg-hint{font-family:var(--wg-mono);font-size:10.5px;color:var(--wg-faint)}
+.wg-kbd{background:var(--wg-panel-2);border:1px solid var(--wg-border);
+  border-bottom-width:2px;border-radius:4px;font-family:var(--wg-mono);
+  font-size:10px;padding:1px 5px;color:var(--wg-muted)}
+.wg-readout{font-family:var(--wg-mono);font-size:11.5px;color:var(--wg-text);
+  font-variant-numeric:tabular-nums;min-width:190px}
+.wg-readout b{color:var(--wg-accent);font-weight:700}
+
+
+.wg-rail{fill:none;stroke:var(--wg-wave);stroke-width:1.9;stroke-linejoin:round;
+  stroke-linecap:round;vector-effect:non-scaling-stroke}
+.wg-rail.wg-clk{stroke:var(--wg-wave-clk)}
+.wg-bus{stroke-width:1.6;stroke-linejoin:round}
+.wg-bustext{font-family:var(--wg-mono);font-size:12px;font-weight:500;
+  text-anchor:middle;letter-spacing:.01em;pointer-events:none}
+.wg-hatchbox{fill:var(--wg-hatch-bg);stroke:var(--wg-hatch);stroke-width:1.5;
+  stroke-linejoin:round}
+.wg-hatchfill{fill:url(#wg-hatchpat);stroke:none;opacity:.85}
+.wg-hatchline{stroke:var(--wg-hatch);stroke-width:1.1}
+.wg-edgemark{fill:var(--wg-wave-clk);opacity:.95}
+.wg-gapfill{fill:var(--wg-bg)}
+.wg-gapline{fill:none;stroke:var(--wg-faint);stroke-width:1.4;stroke-linecap:round}
+
+.wg-canvasbg{fill:var(--wg-bg)}
+.wg-gutterbg{fill:var(--wg-bg)}
+.wg-name{font-family:var(--wg-sans);font-size:12.5px;font-weight:500;
+  text-anchor:end;fill:var(--wg-text)}
+.wg-groupbar{fill:none;stroke:var(--wg-border);stroke-width:1.5}
+.wg-grouptext{font-family:var(--wg-sans);font-size:10.5px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;text-anchor:middle;
+  fill:var(--wg-muted)}
+
+.wg-rulerbg{fill:var(--wg-panel-2);opacity:.55}
+.wg-tick{font-family:var(--wg-mono);font-size:10px;fill:var(--wg-faint);
+  text-anchor:middle;font-variant-numeric:tabular-nums}
+.wg-tickmark{stroke:var(--wg-grid-strong);stroke-width:1}
+.wg-tickmark.wg-faintline{stroke:var(--wg-grid);stroke-width:1}
+.wg-gridline{stroke:var(--wg-grid);stroke-width:1;shape-rendering:crispEdges}
+.wg-gridline-strong{stroke:var(--wg-grid-strong)}
+.wg-rowalt{fill:var(--wg-row-alt)}
+.wg-rowhit{fill:transparent}
+.wg-row.is-hover .wg-rowhit{fill:var(--wg-row-hover)}
+.wg-row.is-dim{opacity:.18}
+.wg-row{transition:opacity .15s ease}
+
+.wg-markband{opacity:.075}
+.wg-markedge{stroke-width:1;stroke-dasharray:3 3;opacity:.5}
+.wg-markline{stroke-width:1.4;stroke-dasharray:5 3;opacity:.75}
+.wg-chip rect{opacity:.92}
+.wg-chip text{font-family:var(--wg-sans);font-size:9.5px;font-weight:600;
+  letter-spacing:.04em;text-anchor:middle;fill:var(--wg-bg)}
+
+.wg-edgepath{fill:none;stroke:var(--wg-edge);stroke-width:1.5;
+  stroke-dasharray:4 2.5;stroke-linecap:round}
+.wg-arrowhead{fill:var(--wg-edge)}
+.wg-edgelabel rect{fill:var(--wg-edge-chip);stroke:var(--wg-edge);stroke-width:1;
+  opacity:.97}
+.wg-edgelabel text{font-family:var(--wg-sans);font-size:10px;font-weight:600;
+  text-anchor:middle;fill:var(--wg-edge-text)}
+.wg-node{fill:var(--wg-edge);opacity:.85}
+.wg-nodelabel{font-family:var(--wg-mono);font-size:9.5px;font-weight:600;
+  text-anchor:middle;fill:var(--wg-edge-text)}
+
+.wg-cursorline{stroke:var(--wg-cursor);stroke-width:1.2;stroke-dasharray:4 3;
+  opacity:0}
+.wg-cursor-on .wg-cursorline{opacity:.9}
+.wg-cursorchip rect{fill:var(--wg-cursor);opacity:0}
+.wg-cursorchip text{font-family:var(--wg-mono);font-size:10px;font-weight:700;
+  text-anchor:middle;fill:var(--wg-bg);opacity:0}
+.wg-cursor-on .wg-cursorchip rect,.wg-cursor-on .wg-cursorchip text{opacity:1}
+.wg-mline{stroke:var(--wg-measure);stroke-width:1.4;opacity:0}
+.wg-mband{fill:var(--wg-measure);opacity:0}
+.wg-m-on .wg-mline{opacity:.95}
+.wg-m-on .wg-mband{opacity:.11}
+.wg-mchip rect{fill:var(--wg-measure);opacity:0}
+.wg-mchip text{font-family:var(--wg-mono);font-size:10.5px;font-weight:700;
+  text-anchor:middle;fill:#fff;opacity:0}
+.wg-m-on .wg-mchip rect,.wg-m-on .wg-mchip text{opacity:1}
+.wg-b0{fill:var(--wg-b0-fill);stroke:var(--wg-b0-stroke)}.wg-b0-t{fill:var(--wg-b0-text)}.wg-b1{fill:var(--wg-b1-fill);stroke:var(--wg-b1-stroke)}.wg-b1-t{fill:var(--wg-b1-text)}.wg-b2{fill:var(--wg-b2-fill);stroke:var(--wg-b2-stroke)}.wg-b2-t{fill:var(--wg-b2-text)}.wg-b3{fill:var(--wg-b3-fill);stroke:var(--wg-b3-stroke)}.wg-b3-t{fill:var(--wg-b3-text)}.wg-b4{fill:var(--wg-b4-fill);stroke:var(--wg-b4-stroke)}.wg-b4-t{fill:var(--wg-b4-text)}.wg-b5{fill:var(--wg-b5-fill);stroke:var(--wg-b5-stroke)}.wg-b5-t{fill:var(--wg-b5-text)}.wg-b6{fill:var(--wg-b6-fill);stroke:var(--wg-b6-stroke)}.wg-b6-t{fill:var(--wg-b6-text)}.wg-b7{fill:var(--wg-b7-fill);stroke:var(--wg-b7-stroke)}.wg-b7-t{fill:var(--wg-b7-text)}.wg-b8{fill:var(--wg-b8-fill);stroke:var(--wg-b8-stroke)}.wg-b8-t{fill:var(--wg-b8-text)}
+</style>
+</head>
+<body>
+
+<div class="wg-topbar">
+  <div class="wg-brand">
+    <div class="wg-title">AMBA AXI4 — Write Burst followed by Read Burst</div>
+    <div class="wg-subtitle">INCR burst, 4 beats, 32-bit data · single outstanding transaction · slave back-pressure on W, master throttle on R</div>
+  </div>
+  <div class="wg-tools">
+    <input id="wg-search" class="wg-search" type="search" placeholder="Filter signals…"
+           aria-label="Filter signals">
+    <div class="wg-seg" role="group" aria-label="Zoom">
+      <button id="wg-zoomout" title="Zoom out (-)" aria-label="Zoom out">−</button>
+      <span class="wg-zoomval" id="wg-zoomval">100%</span>
+      <button id="wg-zoomin" title="Zoom in (+)" aria-label="Zoom in">+</button>
+      <button id="wg-zoomfit" title="Fit to width (f)">Fit</button>
+      <button id="wg-zoomreset" title="Reset zoom (0)">1:1</button>
+    </div>
+    <button id="wg-export" class="wg-btn" title="Download the diagram as SVG">Export SVG</button>
+    <button id="wg-theme" class="wg-btn" title="Toggle theme (t)">Light</button>
+  </div>
+</div>
+
+<div class="wg-stage" id="wg-stage">
+<svg xmlns="http://www.w3.org/2000/svg" id="wg-svg" width="1702.4" height="1206" viewBox="0 0 1702.4 1206" data-cw="62.1" data-namew="184" data-cycles="24" data-basew="1702.4" data-baseh="1206">
+<defs>
+  <pattern id="wg-hatchpat" width="7" height="7" patternUnits="userSpaceOnUse"
+           patternTransform="rotate(45)">
+    <line class="wg-hatchline" x1="0" y1="0" x2="0" y2="7"/>
+  </pattern>
+  <marker id="wg-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path class="wg-arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+  </marker>
+  <marker id="wg-arrow-rev" viewBox="0 0 10 10" refX="9" refY="5"
+          markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path class="wg-arrowhead" d="M 0 0 L 10 5 L 0 10 z"/>
+  </marker>
+</defs>
+<rect class="wg-canvasbg" x="0" y="0" width="1702.4" height="1206"/><g class="wg-waves" transform="translate(184,0)"><g class="wg-layer-bg"><rect class="wg-rowalt" x="0" y="100" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="200" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="284" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="368" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="452" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="536" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="620" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="704" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="804" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="888" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="972" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="1056" width="1490.4" height="42"/><rect class="wg-rowalt" x="0" y="1140" width="1490.4" height="42"/></g><g class="wg-layer-grid"><line class="wg-gridline wg-gridline-strong" x1="0" y1="48" x2="0" y2="1182"/><line class="wg-gridline" x1="62.1" y1="48" x2="62.1" y2="1182"/><line class="wg-gridline" x1="124.2" y1="48" x2="124.2" y2="1182"/><line class="wg-gridline" x1="186.3" y1="48" x2="186.3" y2="1182"/><line class="wg-gridline" x1="248.4" y1="48" x2="248.4" y2="1182"/><line class="wg-gridline wg-gridline-strong" x1="310.5" y1="48" x2="310.5" y2="1182"/><line class="wg-gridline" x1="372.6" y1="48" x2="372.6" y2="1182"/><line class="wg-gridline" x1="434.7" y1="48" x2="434.7" y2="1182"/><line class="wg-gridline" x1="496.8" y1="48" x2="496.8" y2="1182"/><line class="wg-gridline" x1="558.9" y1="48" x2="558.9" y2="1182"/><line class="wg-gridline wg-gridline-strong" x1="621" y1="48" x2="621" y2="1182"/><line class="wg-gridline" x1="683.1" y1="48" x2="683.1" y2="1182"/><line class="wg-gridline" x1="745.2" y1="48" x2="745.2" y2="1182"/><line class="wg-gridline" x1="807.3" y1="48" x2="807.3" y2="1182"/><line class="wg-gridline" x1="869.4" y1="48" x2="869.4" y2="1182"/><line class="wg-gridline wg-gridline-strong" x1="931.5" y1="48" x2="931.5" y2="1182"/><line class="wg-gridline" x1="993.6" y1="48" x2="993.6" y2="1182"/><line class="wg-gridline" x1="1055.7" y1="48" x2="1055.7" y2="1182"/><line class="wg-gridline" x1="1117.8" y1="48" x2="1117.8" y2="1182"/><line class="wg-gridline" x1="1179.9" y1="48" x2="1179.9" y2="1182"/><line class="wg-gridline wg-gridline-strong" x1="1242" y1="48" x2="1242" y2="1182"/><line class="wg-gridline" x1="1304.1" y1="48" x2="1304.1" y2="1182"/><line class="wg-gridline" x1="1366.2" y1="48" x2="1366.2" y2="1182"/><line class="wg-gridline" x1="1428.3" y1="48" x2="1428.3" y2="1182"/><line class="wg-gridline" x1="1490.4" y1="48" x2="1490.4" y2="1182"/></g><g class="wg-layer-marks"><rect class="wg-markband" x="124.2" y="22" width="124.2" height="1160" style="fill:var(--wg-mark-indigo)"/><line class="wg-markedge" x1="124.2" y1="22" x2="124.2" y2="1182" style="stroke:var(--wg-mark-indigo)"/><line class="wg-markedge" x1="248.4" y1="22" x2="248.4" y2="1182" style="stroke:var(--wg-mark-indigo)"/><g class="wg-chip"><rect x="174.3" y="4" width="24" height="15" rx="4" style="fill:var(--wg-mark-indigo)"/><text x="186.3" y="14.5">AW</text></g><rect class="wg-markband" x="248.4" y="22" width="310.5" height="1160" style="fill:var(--wg-mark-teal)"/><line class="wg-markedge" x1="248.4" y1="22" x2="248.4" y2="1182" style="stroke:var(--wg-mark-teal)"/><line class="wg-markedge" x1="558.9" y1="22" x2="558.9" y2="1182" style="stroke:var(--wg-mark-teal)"/><g class="wg-chip"><rect x="367.65" y="4" width="72" height="15" rx="4" style="fill:var(--wg-mark-teal)"/><text x="403.65" y="14.5">W burst ×4</text></g><rect class="wg-markband" x="621" y="22" width="124.2" height="1160" style="fill:var(--wg-mark-amber)"/><line class="wg-markedge" x1="621" y1="22" x2="621" y2="1182" style="stroke:var(--wg-mark-amber)"/><line class="wg-markedge" x1="745.2" y1="22" x2="745.2" y2="1182" style="stroke:var(--wg-mark-amber)"/><g class="wg-chip"><rect x="674.1" y="4" width="18" height="15" rx="4" style="fill:var(--wg-mark-amber)"/><text x="683.1" y="14.5">B</text></g><rect class="wg-markband" x="745.2" y="22" width="124.2" height="1160" style="fill:var(--wg-mark-violet)"/><line class="wg-markedge" x1="745.2" y1="22" x2="745.2" y2="1182" style="stroke:var(--wg-mark-violet)"/><line class="wg-markedge" x1="869.4" y1="22" x2="869.4" y2="1182" style="stroke:var(--wg-mark-violet)"/><g class="wg-chip"><rect x="795.3" y="4" width="24" height="15" rx="4" style="fill:var(--wg-mark-violet)"/><text x="807.3" y="14.5">AR</text></g><rect class="wg-markband" x="993.6" y="22" width="310.5" height="1160" style="fill:var(--wg-mark-cyan)"/><line class="wg-markedge" x1="993.6" y1="22" x2="993.6" y2="1182" style="stroke:var(--wg-mark-cyan)"/><line class="wg-markedge" x1="1304.1" y1="22" x2="1304.1" y2="1182" style="stroke:var(--wg-mark-cyan)"/><g class="wg-chip"><rect x="1112.85" y="4" width="72" height="15" rx="4" style="fill:var(--wg-mark-cyan)"/><text x="1148.85" y="14.5">R burst ×4</text></g></g><g class="wg-layer-ruler" transform="translate(0,22)"><rect class="wg-rulerbg" x="0" y="0" width="1490.4" height="26"/><text class="wg-tick" x="31.05" y="18">0</text><line class="wg-tickmark" x1="0" y1="21" x2="0" y2="26"/><text class="wg-tick" x="93.15" y="18">1</text><line class="wg-tickmark" x1="62.1" y1="21" x2="62.1" y2="26"/><text class="wg-tick" x="155.25" y="18">2</text><line class="wg-tickmark" x1="124.2" y1="21" x2="124.2" y2="26"/><text class="wg-tick" x="217.35" y="18">3</text><line class="wg-tickmark" x1="186.3" y1="21" x2="186.3" y2="26"/><text class="wg-tick" x="279.45" y="18">4</text><line class="wg-tickmark" x1="248.4" y1="21" x2="248.4" y2="26"/><text class="wg-tick" x="341.55" y="18">5</text><line class="wg-tickmark" x1="310.5" y1="21" x2="310.5" y2="26"/><text class="wg-tick" x="403.65" y="18">6</text><line class="wg-tickmark" x1="372.6" y1="21" x2="372.6" y2="26"/><text class="wg-tick" x="465.75" y="18">7</text><line class="wg-tickmark" x1="434.7" y1="21" x2="434.7" y2="26"/><text class="wg-tick" x="527.85" y="18">8</text><line class="wg-tickmark" x1="496.8" y1="21" x2="496.8" y2="26"/><text class="wg-tick" x="589.95" y="18">9</text><line class="wg-tickmark" x1="558.9" y1="21" x2="558.9" y2="26"/><text class="wg-tick" x="652.05" y="18">10</text><line class="wg-tickmark" x1="621" y1="21" x2="621" y2="26"/><text class="wg-tick" x="714.15" y="18">11</text><line class="wg-tickmark" x1="683.1" y1="21" x2="683.1" y2="26"/><text class="wg-tick" x="776.25" y="18">12</text><line class="wg-tickmark" x1="745.2" y1="21" x2="745.2" y2="26"/><text class="wg-tick" x="838.35" y="18">13</text><line class="wg-tickmark" x1="807.3" y1="21" x2="807.3" y2="26"/><text class="wg-tick" x="900.45" y="18">14</text><line class="wg-tickmark" x1="869.4" y1="21" x2="869.4" y2="26"/><text class="wg-tick" x="962.55" y="18">15</text><line class="wg-tickmark" x1="931.5" y1="21" x2="931.5" y2="26"/><text class="wg-tick" x="1024.65" y="18">16</text><line class="wg-tickmark" x1="993.6" y1="21" x2="993.6" y2="26"/><text class="wg-tick" x="1086.75" y="18">17</text><line class="wg-tickmark" x1="1055.7" y1="21" x2="1055.7" y2="26"/><text class="wg-tick" x="1148.85" y="18">18</text><line class="wg-tickmark" x1="1117.8" y1="21" x2="1117.8" y2="26"/><text class="wg-tick" x="1210.95" y="18">19</text><line class="wg-tickmark" x1="1179.9" y1="21" x2="1179.9" y2="26"/><text class="wg-tick" x="1273.05" y="18">20</text><line class="wg-tickmark" x1="1242" y1="21" x2="1242" y2="26"/><text class="wg-tick" x="1335.15" y="18">21</text><line class="wg-tickmark" x1="1304.1" y1="21" x2="1304.1" y2="26"/><text class="wg-tick" x="1397.25" y="18">22</text><line class="wg-tickmark" x1="1366.2" y1="21" x2="1366.2" y2="26"/><text class="wg-tick" x="1459.35" y="18">23</text><line class="wg-tickmark" x1="1428.3" y1="21" x2="1428.3" y2="26"/></g><g class="wg-row" data-name="aclk" data-y="58"><rect class="wg-rowhit" x="0" y="58" width="1490.4" height="42"/><path class="wg-edgemark" d="M -0 72.86 L -3.4 77.46 L 3.4 77.46 Z"/><path class="wg-rail wg-clk" d="M -0 67 L 29.45 67 L 32.65 91 L 62.1 91 L 60.5 91 L 63.7 67 L 91.55 67 L 94.75 91 L 124.2 91 L 122.6 91 L 125.8 67 L 153.65 67 L 156.85 91 L 186.3 91 L 184.7 91 L 187.9 67 L 215.75 67 L 218.95 91 L 248.4 91 L 246.8 91 L 250 67 L 277.85 67 L 281.05 91 L 310.5 91 L 308.9 91 L 312.1 67 L 339.95 67 L 343.15 91 L 372.6 91 L 371 91 L 374.2 67 L 402.05 67 L 405.25 91 L 434.7 91 L 433.1 91 L 436.3 67 L 464.15 67 L 467.35 91 L 496.8 91 L 495.2 91 L 498.4 67 L 526.25 67 L 529.45 91 L 558.9 91 L 557.3 91 L 560.5 67 L 588.35 67 L 591.55 91 L 621 91 L 619.4 91 L 622.6 67 L 650.45 67 L 653.65 91 L 683.1 91 L 681.5 91 L 684.7 67 L 712.55 67 L 715.75 91 L 745.2 91 L 743.6 91 L 746.8 67 L 774.65 67 L 777.85 91 L 807.3 91 L 805.7 91 L 808.9 67 L 836.75 67 L 839.95 91 L 869.4 91 L 867.8 91 L 871 67 L 898.85 67 L 902.05 91 L 931.5 91 L 929.9 91 L 933.1 67 L 960.95 67 L 964.15 91 L 993.6 91 L 992 91 L 995.2 67 L 1023.05 67 L 1026.25 91 L 1055.7 91 L 1054.1 91 L 1057.3 67 L 1085.15 67 L 1088.35 91 L 1117.8 91 L 1116.2 91 L 1119.4 67 L 1147.25 67 L 1150.45 91 L 1179.9 91 L 1178.3 91 L 1181.5 67 L 1209.35 67 L 1212.55 91 L 1242 91 L 1240.4 91 L 1243.6 67 L 1271.45 67 L 1274.65 91 L 1304.1 91 L 1302.5 91 L 1305.7 67 L 1333.55 67 L 1336.75 91 L 1366.2 91 L 1364.6 91 L 1367.8 67 L 1395.65 67 L 1398.85 91 L 1428.3 91 L 1426.7 91 L 1429.9 67 L 1457.75 67 L 1460.95 91 L 1490.4 91"/></g><g class="wg-row" data-name="aresetn" data-y="100"><rect class="wg-rowhit" x="0" y="100" width="1490.4" height="42"/><path class="wg-rail" d="M -0 133 L 62.1 133 L 60.5 133 L 63.7 109 L 1490.4 109"/></g><g class="wg-row" data-name="awvalid" data-y="158"><rect class="wg-rowhit" x="0" y="158" width="1490.4" height="42"/><path class="wg-rail" d="M -0 191 L 124.2 191 L 122.6 191 L 125.8 167 L 248.4 167 L 246.8 167 L 250 191 L 1490.4 191"/></g><g class="wg-row" data-name="awready" data-y="200"><rect class="wg-rowhit" x="0" y="200" width="1490.4" height="42"/><path class="wg-rail" d="M -0 233 L 186.3 233 L 184.7 233 L 187.9 209 L 248.4 209 L 246.8 209 L 250 233 L 1490.4 233"/></g><g class="wg-row" data-name="awaddr" data-y="242"><rect class="wg-rowhit" x="0" y="242" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 263 L 5 251 L 119.2 251 L 124.2 263 L 119.2 275 L 5 275 Z"/><path class="wg-hatchfill" d="M -0 263 L 5 251 L 119.2 251 L 124.2 263 L 119.2 275 L 5 275 Z"/><path class="wg-bus wg-b1" d="M 124.2 263 L 129.2 251 L 243.4 251 L 248.4 263 L 243.4 275 L 129.2 275 Z"/><text class="wg-bustext wg-b1-t" x="186.3" y="263" dy="0.34em">0x4000_1000</text><path class="wg-hatchbox" d="M 248.4 263 L 253.4 251 L 1485.4 251 L 1490.4 263 L 1485.4 275 L 253.4 275 Z"/><path class="wg-hatchfill" d="M 248.4 263 L 253.4 251 L 1485.4 251 L 1490.4 263 L 1485.4 275 L 253.4 275 Z"/></g><g class="wg-row" data-name="awlen" data-y="284"><rect class="wg-rowhit" x="0" y="284" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 305 L 5 293 L 119.2 293 L 124.2 305 L 119.2 317 L 5 317 Z"/><path class="wg-hatchfill" d="M -0 305 L 5 293 L 119.2 293 L 124.2 305 L 119.2 317 L 5 317 Z"/><path class="wg-bus wg-b0" d="M 124.2 305 L 129.2 293 L 243.4 293 L 248.4 305 L 243.4 317 L 129.2 317 Z"/><text class="wg-bustext wg-b0-t" x="186.3" y="305" dy="0.34em">0x03</text><path class="wg-hatchbox" d="M 248.4 305 L 253.4 293 L 1485.4 293 L 1490.4 305 L 1485.4 317 L 253.4 317 Z"/><path class="wg-hatchfill" d="M 248.4 305 L 253.4 293 L 1485.4 293 L 1490.4 305 L 1485.4 317 L 253.4 317 Z"/></g><g class="wg-row" data-name="awsize" data-y="326"><rect class="wg-rowhit" x="0" y="326" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 347 L 5 335 L 119.2 335 L 124.2 347 L 119.2 359 L 5 359 Z"/><path class="wg-hatchfill" d="M -0 347 L 5 335 L 119.2 335 L 124.2 347 L 119.2 359 L 5 359 Z"/><path class="wg-bus wg-b0" d="M 124.2 347 L 129.2 335 L 243.4 335 L 248.4 347 L 243.4 359 L 129.2 359 Z"/><text class="wg-bustext wg-b0-t" x="186.3" y="347" dy="0.34em">0b010</text><path class="wg-hatchbox" d="M 248.4 347 L 253.4 335 L 1485.4 335 L 1490.4 347 L 1485.4 359 L 253.4 359 Z"/><path class="wg-hatchfill" d="M 248.4 347 L 253.4 335 L 1485.4 335 L 1490.4 347 L 1485.4 359 L 253.4 359 Z"/></g><g class="wg-row" data-name="awburst" data-y="368"><rect class="wg-rowhit" x="0" y="368" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 389 L 5 377 L 119.2 377 L 124.2 389 L 119.2 401 L 5 401 Z"/><path class="wg-hatchfill" d="M -0 389 L 5 377 L 119.2 377 L 124.2 389 L 119.2 401 L 5 401 Z"/><path class="wg-bus wg-b0" d="M 124.2 389 L 129.2 377 L 243.4 377 L 248.4 389 L 243.4 401 L 129.2 401 Z"/><text class="wg-bustext wg-b0-t" x="186.3" y="389" dy="0.34em">INCR</text><path class="wg-hatchbox" d="M 248.4 389 L 253.4 377 L 1485.4 377 L 1490.4 389 L 1485.4 401 L 253.4 401 Z"/><path class="wg-hatchfill" d="M 248.4 389 L 253.4 377 L 1485.4 377 L 1490.4 389 L 1485.4 401 L 253.4 401 Z"/></g><g class="wg-row" data-name="wvalid" data-y="410"><rect class="wg-rowhit" x="0" y="410" width="1490.4" height="42"/><path class="wg-rail" d="M -0 443 L 248.4 443 L 246.8 443 L 250 419 L 558.9 419 L 557.3 419 L 560.5 443 L 1490.4 443"/></g><g class="wg-row" data-name="wready" data-y="452"><rect class="wg-rowhit" x="0" y="452" width="1490.4" height="42"/><path class="wg-rail" d="M -0 485 L 248.4 485 L 246.8 485 L 250 461 L 372.6 461 L 371 461 L 374.2 485 L 434.7 485 L 433.1 485 L 436.3 461 L 558.9 461 L 557.3 461 L 560.5 485 L 1490.4 485"/></g><g class="wg-row" data-name="wdata" data-y="494"><rect class="wg-rowhit" x="0" y="494" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 515 L 5 503 L 243.4 503 L 248.4 515 L 243.4 527 L 5 527 Z"/><path class="wg-hatchfill" d="M -0 515 L 5 503 L 243.4 503 L 248.4 515 L 243.4 527 L 5 527 Z"/><path class="wg-bus wg-b2" d="M 248.4 515 L 253.4 503 L 305.5 503 L 310.5 515 L 305.5 527 L 253.4 527 Z"/><text class="wg-bustext wg-b2-t" x="279.45" y="515" dy="0.34em">D0</text><path class="wg-bus wg-b2" d="M 310.5 515 L 315.5 503 L 367.6 503 L 372.6 515 L 367.6 527 L 315.5 527 Z"/><text class="wg-bustext wg-b2-t" x="341.55" y="515" dy="0.34em">D1</text><path class="wg-bus wg-b2" d="M 372.6 515 L 377.6 503 L 491.8 503 L 496.8 515 L 491.8 527 L 377.6 527 Z"/><text class="wg-bustext wg-b2-t" x="434.7" y="515" dy="0.34em">D2</text><path class="wg-bus wg-b2" d="M 496.8 515 L 501.8 503 L 553.9 503 L 558.9 515 L 553.9 527 L 501.8 527 Z"/><text class="wg-bustext wg-b2-t" x="527.85" y="515" dy="0.34em">D3</text><path class="wg-hatchbox" d="M 558.9 515 L 563.9 503 L 1485.4 503 L 1490.4 515 L 1485.4 527 L 563.9 527 Z"/><path class="wg-hatchfill" d="M 558.9 515 L 563.9 503 L 1485.4 503 L 1490.4 515 L 1485.4 527 L 563.9 527 Z"/></g><g class="wg-row" data-name="wstrb" data-y="536"><rect class="wg-rowhit" x="0" y="536" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 557 L 5 545 L 243.4 545 L 248.4 557 L 243.4 569 L 5 569 Z"/><path class="wg-hatchfill" d="M -0 557 L 5 545 L 243.4 545 L 248.4 557 L 243.4 569 L 5 569 Z"/><path class="wg-bus wg-b0" d="M 248.4 557 L 253.4 545 L 491.8 545 L 496.8 557 L 491.8 569 L 253.4 569 Z"/><text class="wg-bustext wg-b0-t" x="372.6" y="557" dy="0.34em">0xF</text><path class="wg-bus wg-b0" d="M 496.8 557 L 501.8 545 L 553.9 545 L 558.9 557 L 553.9 569 L 501.8 569 Z"/><text class="wg-bustext wg-b0-t" x="527.85" y="557" dy="0.34em">0x7</text><path class="wg-hatchbox" d="M 558.9 557 L 563.9 545 L 1485.4 545 L 1490.4 557 L 1485.4 569 L 563.9 569 Z"/><path class="wg-hatchfill" d="M 558.9 557 L 563.9 545 L 1485.4 545 L 1490.4 557 L 1485.4 569 L 563.9 569 Z"/></g><g class="wg-row" data-name="wlast" data-y="578"><rect class="wg-rowhit" x="0" y="578" width="1490.4" height="42"/><path class="wg-rail" d="M -0 611 L 496.8 611 L 495.2 611 L 498.4 587 L 558.9 587 L 557.3 587 L 560.5 611 L 1490.4 611"/></g><g class="wg-row" data-name="bvalid" data-y="620"><rect class="wg-rowhit" x="0" y="620" width="1490.4" height="42"/><path class="wg-rail" d="M -0 653 L 621 653 L 619.4 653 L 622.6 629 L 745.2 629 L 743.6 629 L 746.8 653 L 1490.4 653"/></g><g class="wg-row" data-name="bready" data-y="662"><rect class="wg-rowhit" x="0" y="662" width="1490.4" height="42"/><path class="wg-rail" d="M -0 695 L 683.1 695 L 681.5 695 L 684.7 671 L 745.2 671 L 743.6 671 L 746.8 695 L 1490.4 695"/></g><g class="wg-row" data-name="bid" data-y="704"><rect class="wg-rowhit" x="0" y="704" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 725 L 5 713 L 616 713 L 621 725 L 616 737 L 5 737 Z"/><path class="wg-hatchfill" d="M -0 725 L 5 713 L 616 713 L 621 725 L 616 737 L 5 737 Z"/><path class="wg-bus wg-b3" d="M 621 725 L 626 713 L 740.2 713 L 745.2 725 L 740.2 737 L 626 737 Z"/><text class="wg-bustext wg-b3-t" x="683.1" y="725" dy="0.34em">0x1</text><path class="wg-hatchbox" d="M 745.2 725 L 750.2 713 L 1485.4 713 L 1490.4 725 L 1485.4 737 L 750.2 737 Z"/><path class="wg-hatchfill" d="M 745.2 725 L 750.2 713 L 1485.4 713 L 1490.4 725 L 1485.4 737 L 750.2 737 Z"/></g><g class="wg-row" data-name="bresp" data-y="746"><rect class="wg-rowhit" x="0" y="746" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 767 L 5 755 L 616 755 L 621 767 L 616 779 L 5 779 Z"/><path class="wg-hatchfill" d="M -0 767 L 5 755 L 616 755 L 621 767 L 616 779 L 5 779 Z"/><path class="wg-bus wg-b3" d="M 621 767 L 626 755 L 740.2 755 L 745.2 767 L 740.2 779 L 626 779 Z"/><text class="wg-bustext wg-b3-t" x="683.1" y="767" dy="0.34em">OKAY</text><path class="wg-hatchbox" d="M 745.2 767 L 750.2 755 L 1485.4 755 L 1490.4 767 L 1485.4 779 L 750.2 779 Z"/><path class="wg-hatchfill" d="M 745.2 767 L 750.2 755 L 1485.4 755 L 1490.4 767 L 1485.4 779 L 750.2 779 Z"/></g><g class="wg-row" data-name="arvalid" data-y="804"><rect class="wg-rowhit" x="0" y="804" width="1490.4" height="42"/><path class="wg-rail" d="M -0 837 L 745.2 837 L 743.6 837 L 746.8 813 L 869.4 813 L 867.8 813 L 871 837 L 1490.4 837"/></g><g class="wg-row" data-name="arready" data-y="846"><rect class="wg-rowhit" x="0" y="846" width="1490.4" height="42"/><path class="wg-rail" d="M -0 879 L 807.3 879 L 805.7 879 L 808.9 855 L 869.4 855 L 867.8 855 L 871 879 L 1490.4 879"/></g><g class="wg-row" data-name="araddr" data-y="888"><rect class="wg-rowhit" x="0" y="888" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 909 L 5 897 L 740.2 897 L 745.2 909 L 740.2 921 L 5 921 Z"/><path class="wg-hatchfill" d="M -0 909 L 5 897 L 740.2 897 L 745.2 909 L 740.2 921 L 5 921 Z"/><path class="wg-bus wg-b1" d="M 745.2 909 L 750.2 897 L 864.4 897 L 869.4 909 L 864.4 921 L 750.2 921 Z"/><text class="wg-bustext wg-b1-t" x="807.3" y="909" dy="0.34em">0x4000_1000</text><path class="wg-hatchbox" d="M 869.4 909 L 874.4 897 L 1485.4 897 L 1490.4 909 L 1485.4 921 L 874.4 921 Z"/><path class="wg-hatchfill" d="M 869.4 909 L 874.4 897 L 1485.4 897 L 1490.4 909 L 1485.4 921 L 874.4 921 Z"/></g><g class="wg-row" data-name="arlen" data-y="930"><rect class="wg-rowhit" x="0" y="930" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 951 L 5 939 L 740.2 939 L 745.2 951 L 740.2 963 L 5 963 Z"/><path class="wg-hatchfill" d="M -0 951 L 5 939 L 740.2 939 L 745.2 951 L 740.2 963 L 5 963 Z"/><path class="wg-bus wg-b0" d="M 745.2 951 L 750.2 939 L 864.4 939 L 869.4 951 L 864.4 963 L 750.2 963 Z"/><text class="wg-bustext wg-b0-t" x="807.3" y="951" dy="0.34em">0x03</text><path class="wg-hatchbox" d="M 869.4 951 L 874.4 939 L 1485.4 939 L 1490.4 951 L 1485.4 963 L 874.4 963 Z"/><path class="wg-hatchfill" d="M 869.4 951 L 874.4 939 L 1485.4 939 L 1490.4 951 L 1485.4 963 L 874.4 963 Z"/></g><g class="wg-row" data-name="rvalid" data-y="972"><rect class="wg-rowhit" x="0" y="972" width="1490.4" height="42"/><path class="wg-rail" d="M -0 1005 L 993.6 1005 L 992 1005 L 995.2 981 L 1304.1 981 L 1302.5 981 L 1305.7 1005 L 1490.4 1005"/></g><g class="wg-row" data-name="rready" data-y="1014"><rect class="wg-rowhit" x="0" y="1014" width="1490.4" height="42"/><path class="wg-rail" d="M -0 1047 L 993.6 1047 L 992 1047 L 995.2 1023 L 1117.8 1023 L 1116.2 1023 L 1119.4 1047 L 1179.9 1047 L 1178.3 1047 L 1181.5 1023 L 1304.1 1023 L 1302.5 1023 L 1305.7 1047 L 1490.4 1047"/></g><g class="wg-row" data-name="rdata" data-y="1056"><rect class="wg-rowhit" x="0" y="1056" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 1077 L 5 1065 L 988.6 1065 L 993.6 1077 L 988.6 1089 L 5 1089 Z"/><path class="wg-hatchfill" d="M -0 1077 L 5 1065 L 988.6 1065 L 993.6 1077 L 988.6 1089 L 5 1089 Z"/><path class="wg-bus wg-b5" d="M 993.6 1077 L 998.6 1065 L 1050.7 1065 L 1055.7 1077 L 1050.7 1089 L 998.6 1089 Z"/><text class="wg-bustext wg-b5-t" x="1024.65" y="1077" dy="0.34em">D0</text><path class="wg-bus wg-b5" d="M 1055.7 1077 L 1060.7 1065 L 1112.8 1065 L 1117.8 1077 L 1112.8 1089 L 1060.7 1089 Z"/><text class="wg-bustext wg-b5-t" x="1086.75" y="1077" dy="0.34em">D1</text><path class="wg-bus wg-b5" d="M 1117.8 1077 L 1122.8 1065 L 1237 1065 L 1242 1077 L 1237 1089 L 1122.8 1089 Z"/><text class="wg-bustext wg-b5-t" x="1179.9" y="1077" dy="0.34em">D2</text><path class="wg-bus wg-b5" d="M 1242 1077 L 1247 1065 L 1299.1 1065 L 1304.1 1077 L 1299.1 1089 L 1247 1089 Z"/><text class="wg-bustext wg-b5-t" x="1273.05" y="1077" dy="0.34em">D3</text><path class="wg-hatchbox" d="M 1304.1 1077 L 1309.1 1065 L 1485.4 1065 L 1490.4 1077 L 1485.4 1089 L 1309.1 1089 Z"/><path class="wg-hatchfill" d="M 1304.1 1077 L 1309.1 1065 L 1485.4 1065 L 1490.4 1077 L 1485.4 1089 L 1309.1 1089 Z"/></g><g class="wg-row" data-name="rresp" data-y="1098"><rect class="wg-rowhit" x="0" y="1098" width="1490.4" height="42"/><path class="wg-hatchbox" d="M -0 1119 L 5 1107 L 988.6 1107 L 993.6 1119 L 988.6 1131 L 5 1131 Z"/><path class="wg-hatchfill" d="M -0 1119 L 5 1107 L 988.6 1107 L 993.6 1119 L 988.6 1131 L 5 1131 Z"/><path class="wg-bus wg-b3" d="M 993.6 1119 L 998.6 1107 L 1299.1 1107 L 1304.1 1119 L 1299.1 1131 L 998.6 1131 Z"/><text class="wg-bustext wg-b3-t" x="1148.85" y="1119" dy="0.34em">OKAY</text><path class="wg-hatchbox" d="M 1304.1 1119 L 1309.1 1107 L 1485.4 1107 L 1490.4 1119 L 1485.4 1131 L 1309.1 1131 Z"/><path class="wg-hatchfill" d="M 1304.1 1119 L 1309.1 1107 L 1485.4 1107 L 1490.4 1119 L 1485.4 1131 L 1309.1 1131 Z"/></g><g class="wg-row" data-name="rlast" data-y="1140"><rect class="wg-rowhit" x="0" y="1140" width="1490.4" height="42"/><path class="wg-rail" d="M -0 1173 L 1242 1173 L 1240.4 1173 L 1243.6 1149 L 1304.1 1149 L 1302.5 1149 L 1305.7 1173 L 1490.4 1173"/></g><g class="wg-layer-edges"><path class="wg-edgepath" d="M 124.2 179 C 150.28 179 160.22 221 186.3 221" marker-end="url(#wg-arrow)"/><g class="wg-edgelabel"><rect x="112.65" y="192" width="85.2" height="16" rx="5"/><text x="155.25" y="200" dy="0.34em">AW handshake</text></g><path class="wg-edgepath" d="M 496.8 599 C 548.96 599 568.84 641 621 641" marker-end="url(#wg-arrow)"/><g class="wg-edgelabel"><rect x="510.2" y="612" width="97.4" height="16" rx="5"/><text x="558.9" y="620" dy="0.34em">write response</text></g><path class="wg-edgepath" d="M 745.2 825 C 953.86 825 1033.34 1161 1242 1161" marker-end="url(#wg-arrow)"/><g class="wg-edgelabel"><rect x="926.6" y="985" width="134" height="16" rx="5"/><text x="993.6" y="993" dy="0.34em">read latency = 8 cyc</text></g><circle class="wg-node" cx="124.2" cy="179" r="2.6"/><circle class="wg-node" cx="186.3" cy="221" r="2.6"/><circle class="wg-node" cx="496.8" cy="599" r="2.6"/><circle class="wg-node" cx="621" cy="641" r="2.6"/><circle class="wg-node" cx="745.2" cy="825" r="2.6"/><circle class="wg-node" cx="1242" cy="1161" r="2.6"/></g><g class="wg-overlay"><rect class="wg-mband" id="wg-mband" x="0" y="22" width="0" height="1160"/><line class="wg-mline" id="wg-mline-a" x1="0" y1="22" x2="0" y2="1182"/><line class="wg-mline" id="wg-mline-b" x1="0" y1="22" x2="0" y2="1182"/><g class="wg-mchip" id="wg-mchip"><rect x="0" y="1184" width="0" height="16" rx="5"/><text x="0" y="1195"></text></g><line class="wg-cursorline" id="wg-cursorline" x1="0" y1="22" x2="0" y2="1182"/><g class="wg-cursorchip" id="wg-cursorchip"><rect x="0" y="2" width="44" height="15" rx="4"/><text x="22" y="13"></text></g></g></g><g class="wg-gutter" id="wg-gutter"><rect class="wg-gutterbg" x="0" y="0" width="184" height="1206"/><path class="wg-groupbar" d="M 22 161 Q 18 161 18 165 L 18 403 Q 18 407 22 407"/><text class="wg-grouptext" transform="rotate(-90 14 284)" x="14" y="284" dy="0.32em">Write Address</text><path class="wg-groupbar" d="M 22 413 Q 18 413 18 417 L 18 613 Q 18 617 22 617"/><text class="wg-grouptext" transform="rotate(-90 14 515)" x="14" y="515" dy="0.32em">Write Data</text><path class="wg-groupbar" d="M 22 623 Q 18 623 18 627 L 18 781 Q 18 785 22 785"/><text class="wg-grouptext" transform="rotate(-90 14 704)" x="14" y="704" dy="0.32em">Write Response</text><path class="wg-groupbar" d="M 22 807 Q 18 807 18 811 L 18 965 Q 18 969 22 969"/><text class="wg-grouptext" transform="rotate(-90 14 888)" x="14" y="888" dy="0.32em">Read Address</text><path class="wg-groupbar" d="M 22 975 Q 18 975 18 979 L 18 1175 Q 18 1179 22 1179"/><text class="wg-grouptext" transform="rotate(-90 14 1077)" x="14" y="1077" dy="0.32em">Read Data</text><text class="wg-name" x="170" y="79" dy="0.33em">ACLK<title>Global clock — all signals are sampled on the rising edge</title></text><text class="wg-name" x="170" y="121" dy="0.33em">ARESETn<title>Active-low global reset, de-asserted at cycle 1</title></text><text class="wg-name" x="170" y="179" dy="0.33em">AWVALID<title>Master asserts: write address is valid</title></text><text class="wg-name" x="170" y="221" dy="0.33em">AWREADY<title>Slave accepts the write address at cycle 3</title></text><text class="wg-name" x="170" y="263" dy="0.33em">AWADDR</text><text class="wg-name" x="170" y="305" dy="0.33em">AWLEN<title>AWLEN+1 = 4 beats</title></text><text class="wg-name" x="170" y="347" dy="0.33em">AWSIZE<title>4 bytes per beat</title></text><text class="wg-name" x="170" y="389" dy="0.33em">AWBURST</text><text class="wg-name" x="170" y="431" dy="0.33em">WVALID<title>Master drives write data for 5 cycles</title></text><text class="wg-name" x="170" y="473" dy="0.33em">WREADY<title>Slave de-asserts at cycle 6 to back-pressure the burst</title></text><text class="wg-name" x="170" y="515" dy="0.33em">WDATA<title>D2 is held across cycles 6–7 while WREADY is low</title></text><text class="wg-name" x="170" y="557" dy="0.33em">WSTRB<title>Final beat is a partial write</title></text><text class="wg-name" x="170" y="599" dy="0.33em">WLAST<title>Marks the final beat of the write burst</title></text><text class="wg-name" x="170" y="641" dy="0.33em">BVALID</text><text class="wg-name" x="170" y="683" dy="0.33em">BREADY</text><text class="wg-name" x="170" y="725" dy="0.33em">BID</text><text class="wg-name" x="170" y="767" dy="0.33em">BRESP</text><text class="wg-name" x="170" y="825" dy="0.33em">ARVALID</text><text class="wg-name" x="170" y="867" dy="0.33em">ARREADY</text><text class="wg-name" x="170" y="909" dy="0.33em">ARADDR</text><text class="wg-name" x="170" y="951" dy="0.33em">ARLEN</text><text class="wg-name" x="170" y="993" dy="0.33em">RVALID</text><text class="wg-name" x="170" y="1035" dy="0.33em">RREADY<title>Master de-asserts at cycle 18 to throttle the slave</title></text><text class="wg-name" x="170" y="1077" dy="0.33em">RDATA</text><text class="wg-name" x="170" y="1119" dy="0.33em">RRESP</text><text class="wg-name" x="170" y="1161" dy="0.33em">RLAST</text></g></svg>
+</div>
+
+<div class="wg-footbar">
+  <span class="wg-foottext">A transfer occurs on the rising edge of ACLK when VALID and READY are both asserted. Beats D0–D3 carry 0xA5A5_0000 + n.</span>
+  <span class="wg-readout" id="wg-readout"></span>
+  <span class="wg-hint">
+    <span class="wg-kbd">click</span> set A/B ·
+    <span class="wg-kbd">esc</span> clear ·
+    <span class="wg-kbd">/</span> search ·
+    <span class="wg-kbd">t</span> theme ·
+    <span class="wg-kbd">f</span> fit
+  </span>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  var SVGNS='http://www.w3.org/2000/svg';
+  var root=document.documentElement;
+  var svg=document.getElementById('wg-svg');
+  var stage=document.getElementById('wg-stage');
+  var gutter=document.getElementById('wg-gutter');
+  var CW=parseFloat(svg.dataset.cw), NAMEW=parseFloat(svg.dataset.namew);
+  var CYCLES=parseFloat(svg.dataset.cycles);
+  var BASEW=parseFloat(svg.dataset.basew), BASEH=parseFloat(svg.dataset.baseh);
+
+  /* ---- theme ------------------------------------------------------- */
+  var themeBtn=document.getElementById('wg-theme');
+  function setTheme(t){
+    root.setAttribute('data-theme',t);
+    themeBtn.textContent = t==='dark' ? 'Light' : 'Dark';
+    try{localStorage.setItem('wavegen-theme',t);}catch(e){}
+  }
+  try{
+    var saved=localStorage.getItem('wavegen-theme');
+    if(saved){setTheme(saved);} else {setTheme(root.getAttribute('data-theme')||'dark');}
+  }catch(e){setTheme(root.getAttribute('data-theme')||'dark');}
+  themeBtn.addEventListener('click',function(){
+    setTheme(root.getAttribute('data-theme')==='dark'?'light':'dark');
+  });
+
+  /* ---- zoom -------------------------------------------------------- */
+  var zoom=1, zoomVal=document.getElementById('wg-zoomval');
+  function applyZoom(){
+    zoom=Math.min(4,Math.max(0.35,zoom));
+    svg.style.width=(BASEW*zoom)+'px';
+    svg.style.height=(BASEH*zoom)+'px';
+    zoomVal.textContent=Math.round(zoom*100)+'%';
+  }
+  function fit(){
+    var avail=stage.clientWidth-24;
+    zoom=avail/BASEW; applyZoom();
+  }
+  document.getElementById('wg-zoomin').addEventListener('click',function(){zoom*=1.25;applyZoom();});
+  document.getElementById('wg-zoomout').addEventListener('click',function(){zoom/=1.25;applyZoom();});
+  document.getElementById('wg-zoomfit').addEventListener('click',fit);
+  document.getElementById('wg-zoomreset').addEventListener('click',function(){zoom=1;applyZoom();});
+  applyZoom();
+
+  /* ---- sticky name gutter ------------------------------------------ */
+  stage.addEventListener('scroll',function(){
+    gutter.setAttribute('transform','translate('+(stage.scrollLeft/zoom)+',0)');
+  },{passive:true});
+
+  /* ---- coordinate helper ------------------------------------------- */
+  function svgX(evt){
+    var ctm=svg.getScreenCTM();
+    if(!ctm) return null;
+    var pt=svg.createSVGPoint(); pt.x=evt.clientX; pt.y=evt.clientY;
+    return pt.matrixTransform(ctm.inverse()).x - NAMEW;
+  }
+  function toCycle(x){ return x/CW; }
+  function clampCycle(c){ return Math.min(CYCLES,Math.max(0,c)); }
+
+  /* ---- hover cursor ------------------------------------------------ */
+  var line=document.getElementById('wg-cursorline');
+  var chip=document.getElementById('wg-cursorchip');
+  var chipRect=chip.querySelector('rect'), chipText=chip.querySelector('text');
+  var readout=document.getElementById('wg-readout');
+  var rows=[].slice.call(svg.querySelectorAll('.wg-row'));
+
+  function clearHover(){
+    svg.classList.remove('wg-cursor-on');
+    rows.forEach(function(r){r.classList.remove('is-hover');});
+  }
+
+  svg.addEventListener('mousemove',function(e){
+    var x=svgX(e);
+    if(x===null||x<0){clearHover();return;}
+    var c=clampCycle(toCycle(x));
+    var snapped=Math.round(c*2)/2;
+    var px=snapped*CW;
+    svg.classList.add('wg-cursor-on');
+    line.setAttribute('x1',px); line.setAttribute('x2',px);
+    chipRect.setAttribute('x',px-22); chipText.setAttribute('x',px);
+    chipText.textContent=(Math.round(snapped*100)/100).toFixed(1);
+
+    var ctm=svg.getScreenCTM();
+    var pt=svg.createSVGPoint(); pt.x=e.clientX; pt.y=e.clientY;
+    var y=pt.matrixTransform(ctm.inverse()).y;
+    var hit=null;
+    rows.forEach(function(r){
+      r.classList.remove('is-hover');
+      var ry=parseFloat(r.dataset.y);
+      var rect=r.querySelector('.wg-rowhit');
+      var rh=parseFloat(rect.getAttribute('height'));
+      if(y>=ry&&y<ry+rh) hit=r;
+    });
+    if(hit) hit.classList.add('is-hover');
+    updateReadout(snapped, hit);
+  });
+  svg.addEventListener('mouseleave',clearHover);
+
+  /* ---- click to measure -------------------------------------------- */
+  var mA=null,mB=null;
+  var lineA=document.getElementById('wg-mline-a'), lineB=document.getElementById('wg-mline-b');
+  var band=document.getElementById('wg-mband');
+  var mchip=document.getElementById('wg-mchip');
+  var mchipR=mchip.querySelector('rect'), mchipT=mchip.querySelector('text');
+
+  function drawMeasure(){
+    if(mA===null||mB===null){svg.classList.remove('wg-m-on');return;}
+    var a=Math.min(mA,mB)*CW, b=Math.max(mA,mB)*CW;
+    svg.classList.add('wg-m-on');
+    lineA.setAttribute('x1',a); lineA.setAttribute('x2',a);
+    lineB.setAttribute('x1',b); lineB.setAttribute('x2',b);
+    band.setAttribute('x',a); band.setAttribute('width',Math.max(b-a,0));
+    var d=Math.abs(mB-mA), label='\u0394 '+(Math.round(d*100)/100)+' cyc';
+    var w=label.length*7+16, cx=(a+b)/2;
+    mchipR.setAttribute('x',cx-w/2); mchipR.setAttribute('width',w);
+    mchipT.setAttribute('x',cx); mchipT.textContent=label;
+    updateReadout(null,null);
+  }
+  svg.addEventListener('click',function(e){
+    var x=svgX(e); if(x===null||x<0) return;
+    var c=Math.round(clampCycle(toCycle(x))*2)/2;
+    if(mA===null||mB!==null){mA=c;mB=null;svg.classList.remove('wg-m-on');}
+    else{mB=c;drawMeasure();}
+    updateReadout(c,null);
+  });
+  svg.addEventListener('contextmenu',function(e){
+    e.preventDefault(); mA=mB=null; svg.classList.remove('wg-m-on'); updateReadout(null,null);
+  });
+
+  function updateReadout(cycle,row){
+    var bits=[];
+    if(cycle!==null&&cycle!==undefined) bits.push('cycle <b>'+cycle.toFixed(1)+'</b>');
+    if(row&&row.dataset.name) bits.push(row.dataset.name);
+    if(mA!==null&&mB!==null) bits.push('\u0394 <b>'+(Math.round(Math.abs(mB-mA)*100)/100)+'</b> cyc');
+    else if(mA!==null) bits.push('A@'+mA.toFixed(1)+' \u2026 click B');
+    readout.innerHTML=bits.join(' \u00b7 ')||'hover the diagram';
+  }
+  updateReadout(null,null);
+
+  /* ---- search / dim ------------------------------------------------ */
+  var search=document.getElementById('wg-search');
+  search.addEventListener('input',function(){
+    var q=search.value.trim().toLowerCase();
+    rows.forEach(function(r){
+      r.classList.toggle('is-dim', !!q && r.dataset.name.indexOf(q)===-1);
+    });
+  });
+
+  /* ---- export ------------------------------------------------------ */
+  var VARS=["--wg-accent", "--wg-accent-soft", "--wg-b0-fill", "--wg-b0-stroke", "--wg-b0-text", "--wg-b1-fill", "--wg-b1-stroke", "--wg-b1-text", "--wg-b2-fill", "--wg-b2-stroke", "--wg-b2-text", "--wg-b3-fill", "--wg-b3-stroke", "--wg-b3-text", "--wg-b4-fill", "--wg-b4-stroke", "--wg-b4-text", "--wg-b5-fill", "--wg-b5-stroke", "--wg-b5-text", "--wg-b6-fill", "--wg-b6-stroke", "--wg-b6-text", "--wg-b7-fill", "--wg-b7-stroke", "--wg-b7-text", "--wg-b8-fill", "--wg-b8-stroke", "--wg-b8-text", "--wg-bg", "--wg-border", "--wg-cursor", "--wg-edge", "--wg-edge-chip", "--wg-edge-text", "--wg-faint", "--wg-grid", "--wg-grid-strong", "--wg-hatch", "--wg-hatch-bg", "--wg-mark-amber", "--wg-mark-cyan", "--wg-mark-indigo", "--wg-mark-lime", "--wg-mark-orange", "--wg-mark-rose", "--wg-mark-slate", "--wg-mark-teal", "--wg-mark-violet", "--wg-measure", "--wg-muted", "--wg-panel", "--wg-panel-2", "--wg-row-alt", "--wg-row-hover", "--wg-shadow", "--wg-text", "--wg-wave", "--wg-wave-clk"];
+  var SVGCSS="\n.wg-rail{fill:none;stroke:var(--wg-wave);stroke-width:1.9;stroke-linejoin:round;\n  stroke-linecap:round;vector-effect:non-scaling-stroke}\n.wg-rail.wg-clk{stroke:var(--wg-wave-clk)}\n.wg-bus{stroke-width:1.6;stroke-linejoin:round}\n.wg-bustext{font-family:var(--wg-mono);font-size:12px;font-weight:500;\n  text-anchor:middle;letter-spacing:.01em;pointer-events:none}\n.wg-hatchbox{fill:var(--wg-hatch-bg);stroke:var(--wg-hatch);stroke-width:1.5;\n  stroke-linejoin:round}\n.wg-hatchfill{fill:url(#wg-hatchpat);stroke:none;opacity:.85}\n.wg-hatchline{stroke:var(--wg-hatch);stroke-width:1.1}\n.wg-edgemark{fill:var(--wg-wave-clk);opacity:.95}\n.wg-gapfill{fill:var(--wg-bg)}\n.wg-gapline{fill:none;stroke:var(--wg-faint);stroke-width:1.4;stroke-linecap:round}\n\n.wg-canvasbg{fill:var(--wg-bg)}\n.wg-gutterbg{fill:var(--wg-bg)}\n.wg-name{font-family:var(--wg-sans);font-size:12.5px;font-weight:500;\n  text-anchor:end;fill:var(--wg-text)}\n.wg-groupbar{fill:none;stroke:var(--wg-border);stroke-width:1.5}\n.wg-grouptext{font-family:var(--wg-sans);font-size:10.5px;font-weight:600;\n  letter-spacing:.07em;text-transform:uppercase;text-anchor:middle;\n  fill:var(--wg-muted)}\n\n.wg-rulerbg{fill:var(--wg-panel-2);opacity:.55}\n.wg-tick{font-family:var(--wg-mono);font-size:10px;fill:var(--wg-faint);\n  text-anchor:middle;font-variant-numeric:tabular-nums}\n.wg-tickmark{stroke:var(--wg-grid-strong);stroke-width:1}\n.wg-tickmark.wg-faintline{stroke:var(--wg-grid);stroke-width:1}\n.wg-gridline{stroke:var(--wg-grid);stroke-width:1;shape-rendering:crispEdges}\n.wg-gridline-strong{stroke:var(--wg-grid-strong)}\n.wg-rowalt{fill:var(--wg-row-alt)}\n.wg-rowhit{fill:transparent}\n.wg-row.is-hover .wg-rowhit{fill:var(--wg-row-hover)}\n.wg-row.is-dim{opacity:.18}\n.wg-row{transition:opacity .15s ease}\n\n.wg-markband{opacity:.075}\n.wg-markedge{stroke-width:1;stroke-dasharray:3 3;opacity:.5}\n.wg-markline{stroke-width:1.4;stroke-dasharray:5 3;opacity:.75}\n.wg-chip rect{opacity:.92}\n.wg-chip text{font-family:var(--wg-sans);font-size:9.5px;font-weight:600;\n  letter-spacing:.04em;text-anchor:middle;fill:var(--wg-bg)}\n\n.wg-edgepath{fill:none;stroke:var(--wg-edge);stroke-width:1.5;\n  stroke-dasharray:4 2.5;stroke-linecap:round}\n.wg-arrowhead{fill:var(--wg-edge)}\n.wg-edgelabel rect{fill:var(--wg-edge-chip);stroke:var(--wg-edge);stroke-width:1;\n  opacity:.97}\n.wg-edgelabel text{font-family:var(--wg-sans);font-size:10px;font-weight:600;\n  text-anchor:middle;fill:var(--wg-edge-text)}\n.wg-node{fill:var(--wg-edge);opacity:.85}\n.wg-nodelabel{font-family:var(--wg-mono);font-size:9.5px;font-weight:600;\n  text-anchor:middle;fill:var(--wg-edge-text)}\n\n.wg-cursorline{stroke:var(--wg-cursor);stroke-width:1.2;stroke-dasharray:4 3;\n  opacity:0}\n.wg-cursor-on .wg-cursorline{opacity:.9}\n.wg-cursorchip rect{fill:var(--wg-cursor);opacity:0}\n.wg-cursorchip text{font-family:var(--wg-mono);font-size:10px;font-weight:700;\n  text-anchor:middle;fill:var(--wg-bg);opacity:0}\n.wg-cursor-on .wg-cursorchip rect,.wg-cursor-on .wg-cursorchip text{opacity:1}\n.wg-mline{stroke:var(--wg-measure);stroke-width:1.4;opacity:0}\n.wg-mband{fill:var(--wg-measure);opacity:0}\n.wg-m-on .wg-mline{opacity:.95}\n.wg-m-on .wg-mband{opacity:.11}\n.wg-mchip rect{fill:var(--wg-measure);opacity:0}\n.wg-mchip text{font-family:var(--wg-mono);font-size:10.5px;font-weight:700;\n  text-anchor:middle;fill:#fff;opacity:0}\n.wg-m-on .wg-mchip rect,.wg-m-on .wg-mchip text{opacity:1}\n.wg-b0{fill:var(--wg-b0-fill);stroke:var(--wg-b0-stroke)}.wg-b0-t{fill:var(--wg-b0-text)}.wg-b1{fill:var(--wg-b1-fill);stroke:var(--wg-b1-stroke)}.wg-b1-t{fill:var(--wg-b1-text)}.wg-b2{fill:var(--wg-b2-fill);stroke:var(--wg-b2-stroke)}.wg-b2-t{fill:var(--wg-b2-text)}.wg-b3{fill:var(--wg-b3-fill);stroke:var(--wg-b3-stroke)}.wg-b3-t{fill:var(--wg-b3-text)}.wg-b4{fill:var(--wg-b4-fill);stroke:var(--wg-b4-stroke)}.wg-b4-t{fill:var(--wg-b4-text)}.wg-b5{fill:var(--wg-b5-fill);stroke:var(--wg-b5-stroke)}.wg-b5-t{fill:var(--wg-b5-text)}.wg-b6{fill:var(--wg-b6-fill);stroke:var(--wg-b6-stroke)}.wg-b6-t{fill:var(--wg-b6-text)}.wg-b7{fill:var(--wg-b7-fill);stroke:var(--wg-b7-stroke)}.wg-b7-t{fill:var(--wg-b7-text)}.wg-b8{fill:var(--wg-b8-fill);stroke:var(--wg-b8-stroke)}.wg-b8-t{fill:var(--wg-b8-text)}";
+  document.getElementById('wg-export').addEventListener('click',function(){
+    var clone=svg.cloneNode(true);
+    clone.removeAttribute('style');
+    clone.setAttribute('width',BASEW); clone.setAttribute('height',BASEH);
+    var g=clone.querySelector('#wg-gutter');
+    if(g) g.setAttribute('transform','translate(0,0)');
+    ['wg-cursor-on','wg-m-on'].forEach(function(c){clone.classList.remove(c);});
+    var cs=getComputedStyle(root);
+    var decl=VARS.map(function(v){return v+':'+cs.getPropertyValue(v).trim();}).join(';');
+    decl+=";--wg-sans:ui-sans-serif,-apple-system,'Segoe UI',Roboto,sans-serif";
+    decl+=";--wg-mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,monospace";
+    var st=document.createElementNS(SVGNS,'style');
+    st.textContent=':root{'+decl+'}'+SVGCSS;
+    clone.insertBefore(st,clone.firstChild);
+    var out='<?xml version="1.0" encoding="UTF-8"?>\n'+new XMLSerializer().serializeToString(clone);
+    var url=URL.createObjectURL(new Blob([out],{type:'image/svg+xml'}));
+    var a=document.createElement('a');
+    var base=(document.title||'waveform').replace(/[^A-Za-z0-9._-]+/g,'-')
+             .replace(/^-+|-+$/g,'').slice(0,80)||'waveform';
+    a.href=url; a.download=base+'.svg';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(url);},1500);
+  });
+
+  /* ---- keyboard ---------------------------------------------------- */
+  document.addEventListener('keydown',function(e){
+    if(e.target.tagName==='INPUT') { if(e.key==='Escape') e.target.blur(); return; }
+    if(e.key==='+'||e.key==='='){zoom*=1.25;applyZoom();}
+    else if(e.key==='-'||e.key==='_'){zoom/=1.25;applyZoom();}
+    else if(e.key==='0'){zoom=1;applyZoom();}
+    else if(e.key==='f'){fit();}
+    else if(e.key==='t'){setTheme(root.getAttribute('data-theme')==='dark'?'light':'dark');}
+    else if(e.key==='/'){e.preventDefault();search.focus();}
+    else if(e.key==='Escape'){mA=mB=null;svg.classList.remove('wg-m-on');updateReadout(null,null);}
+  });
+})();
+</script>
+</body>
+</html>

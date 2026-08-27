@@ -1,0 +1,74 @@
+{
+  "config": {
+    "title": "AMBA AXI4 — Write Burst followed by Read Burst",
+    "subtitle": "INCR burst, 4 beats, 32-bit data · single outstanding transaction · slave back-pressure on W, master throttle on R",
+    "theme": "dark",
+    "hscale": 1.35,
+    "vscale": 1,
+    "grid": true,
+    "clockArrows": "explicit"
+  },
+
+  "head": { "text": "AXI4 Write + Read Burst", "tock": 0 },
+  "foot": { "text": "A transfer occurs on the rising edge of ACLK when VALID and READY are both asserted. Beats D0–D3 carry 0xA5A5_0000 + n." },
+
+  "signal": [
+    { "name": "ACLK",    "wave": "P.......................", "desc": "Global clock — all signals are sampled on the rising edge" },
+    { "name": "ARESETn", "wave": "01......................", "desc": "Active-low global reset, de-asserted at cycle 1" },
+    {},
+
+    ["Write Address",
+      { "name": "AWVALID", "wave": "0.1.0...................", "node": "..a", "desc": "Master asserts: write address is valid" },
+      { "name": "AWREADY", "wave": "0..10...................", "node": "...b", "desc": "Slave accepts the write address at cycle 3" },
+      { "name": "AWADDR",  "wave": "x.2.x...................", "data": ["0x4000_1000"] },
+      { "name": "AWLEN",   "wave": "x.=.x...................", "data": ["0x03"], "desc": "AWLEN+1 = 4 beats" },
+      { "name": "AWSIZE",  "wave": "x.=.x...................", "data": ["0b010"], "desc": "4 bytes per beat" },
+      { "name": "AWBURST", "wave": "x.=.x...................", "data": ["INCR"] }
+    ],
+
+    ["Write Data",
+      { "name": "WVALID",  "wave": "0...1....0..............", "desc": "Master drives write data for 5 cycles" },
+      { "name": "WREADY",  "wave": "0...1.01.0..............", "desc": "Slave de-asserts at cycle 6 to back-pressure the burst" },
+      { "name": "WDATA",   "wave": "x...333.3x..............", "data": ["D0", "D1", "D2", "D3"], "desc": "D2 is held across cycles 6–7 while WREADY is low" },
+      { "name": "WSTRB",   "wave": "x...=...=x..............", "data": ["0xF", "0x7"], "desc": "Final beat is a partial write" },
+      { "name": "WLAST",   "wave": "0.......10..............", "node": "........c", "desc": "Marks the final beat of the write burst" }
+    ],
+
+    ["Write Response",
+      { "name": "BVALID",  "wave": "0.........1.0...........", "node": "..........d" },
+      { "name": "BREADY",  "wave": "0..........10..........." },
+      { "name": "BID",     "wave": "x.........4.x...........", "data": ["0x1"] },
+      { "name": "BRESP",   "wave": "x.........4.x...........", "data": ["OKAY"] }
+    ],
+    {},
+
+    ["Read Address",
+      { "name": "ARVALID", "wave": "0...........1.0.........", "node": "............e" },
+      { "name": "ARREADY", "wave": "0............10........." },
+      { "name": "ARADDR",  "wave": "x...........2.x.........", "data": ["0x4000_1000"] },
+      { "name": "ARLEN",   "wave": "x...........=.x.........", "data": ["0x03"] }
+    ],
+
+    ["Read Data",
+      { "name": "RVALID",  "wave": "0...............1....0.." },
+      { "name": "RREADY",  "wave": "0...............1.01.0..", "desc": "Master de-asserts at cycle 18 to throttle the slave" },
+      { "name": "RDATA",   "wave": "x...............666.6x..", "data": ["D0", "D1", "D2", "D3"] },
+      { "name": "RRESP",   "wave": "x...............4....x..", "data": ["OKAY"] },
+      { "name": "RLAST",   "wave": "0...................10..", "node": "....................f" }
+    ]
+  ],
+
+  "edge": [
+    "a~>b AW handshake",
+    "c~>d write response",
+    "e~>f read latency = 8 cyc"
+  ],
+
+  "marks": [
+    { "from": 2,  "to": 4,  "label": "AW",         "color": "indigo" },
+    { "from": 4,  "to": 9,  "label": "W burst ×4", "color": "teal"   },
+    { "from": 10, "to": 12, "label": "B",          "color": "amber"  },
+    { "from": 12, "to": 14, "label": "AR",         "color": "violet" },
+    { "from": 16, "to": 21, "label": "R burst ×4", "color": "cyan"   }
+  ]
+}
