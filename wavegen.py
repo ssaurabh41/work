@@ -503,7 +503,7 @@ class Diagram:
 
         # Folded (dead-time) spans.  The time axis becomes piecewise: folded
         # cycles collapse to a fixed narrow band, everything else is linear.
-        self.fold_w = float(cfg.get("foldWidth", 1.6) or 1.6)
+        self.fold_w = float(cfg.get("foldWidth", 0.34) or 0.34)
         self.folds = normalize_folds(doc.get("folds"), self.cycles)
         self._check_folds()
         self.vcycles = self._u(self.cycles)      # width in *visible* cycle units
@@ -520,7 +520,11 @@ class Diagram:
         # their labels never collide with the cycle numbers.
         self.mark_lane = MARK_LANE_H if (self.marks or self.folds) else 0.0
         self.ruler_y = self.mark_lane
-        y = self.ruler_y + RULER_H + 10
+        # A step-index row numbers every step itself, so the ruler drops its
+        # numbers and shrinks to bare tick marks rather than repeating them.
+        self.has_index = any(r.kind == "index" for r in self.rows)
+        self.ruler_h = 12.0 if self.has_index else RULER_H
+        y = self.ruler_y + self.ruler_h + 10
         for row in self.rows:
             row.height = (self.row_h if row.kind in ("signal", "index")
                           else SPACER_H * self.vscale)
@@ -863,8 +867,8 @@ def render_ruler(dg: Diagram) -> str:
         base, centred = int(tick), False
 
     out = [f'<rect class="wg-rulerbg" id="wg-rulerbg" x="0" y="0" '
-           f'width="{fmt(dg.vcycles * dg.cw)}" height="{fmt(RULER_H)}"/>']
-    y = RULER_H - 8
+           f'width="{fmt(dg.vcycles * dg.cw)}" height="{fmt(dg.ruler_h)}"/>']
+    y = dg.ruler_h - 8
     # Every tick is emitted with its cycle index so the page can re-thin them as
     # the time unit changes; `every` only decides what is visible at base scale.
     for c in range(total + (0 if centred else 1)):
@@ -874,14 +878,15 @@ def render_ruler(dg: Diagram) -> str:
             continue
         x = dg.x_of(c + (0.5 if centred else 0.0))
         strong = (c % every == 0)
-        hide = "" if strong else ' style="display:none"'
-        out.append(
-            f'<text class="wg-tick wg-nox" x="{fmt(x)}" y="{fmt(y)}" '
-            f'data-ax="{fmt(x)}" data-cyc="{c}"{hide}>{base + c}</text>')
+        if not dg.has_index:
+            hide = "" if strong else ' style="display:none"'
+            out.append(
+                f'<text class="wg-tick wg-nox" x="{fmt(x)}" y="{fmt(y)}" '
+                f'data-ax="{fmt(x)}" data-cyc="{c}"{hide}>{base + c}</text>')
         out.append(
             f'<line class="wg-tickmark{"" if strong else " wg-faintline"}" '
-            f'x1="{fmt(dg.x_of(c))}" y1="{fmt(RULER_H - 5)}" '
-            f'x2="{fmt(dg.x_of(c))}" y2="{fmt(RULER_H)}"/>')
+            f'x1="{fmt(dg.x_of(c))}" y1="{fmt(dg.ruler_h - 5)}" '
+            f'x2="{fmt(dg.x_of(c))}" y2="{fmt(dg.ruler_h)}"/>')
     return "".join(out)
 
 
@@ -889,7 +894,7 @@ def render_grid(dg: Diagram) -> str:
     if not dg.show_grid:
         return ""
     out = []
-    y0, y1 = dg.ruler_y + RULER_H, dg.rows_bottom
+    y0, y1 = dg.ruler_y + dg.ruler_h, dg.rows_bottom
     total = int(dg.cycles + 0.999)
     for c in range(total + 1):
         if dg.in_fold(c):
@@ -1619,7 +1624,7 @@ PAGE_JS = """
 
   svg.addEventListener('mousemove',function(e){
     var x=svgX(e);
-    if(x===null||x<0){clearHover();return;}
+    if(x===null||x<-4){clearHover();return;}
     var c=clampCycle(toCycle(x));
     var snapped=snap(c);
     var px=ux(snapped);
@@ -1667,7 +1672,7 @@ PAGE_JS = """
     updateReadout(null,null);
   }
   svg.addEventListener('click',function(e){
-    var x=svgX(e); if(x===null||x<0) return;
+    var x=svgX(e); if(x===null||x<-4) return;
     var c=snap(clampCycle(toCycle(x)));
     if(mA===null||mB!==null){mA=c;mB=null;svg.classList.remove('wg-m-on');}
     else{mB=c;drawMeasure();}

@@ -6,8 +6,7 @@
     "hscale": 1.35,
     "vscale": 1,
     "grid": true,
-    "clockArrows": "explicit",
-    "foldWidth": 1.6
+    "clockArrows": "explicit"
   },
 
   "head": { "text": "AXI4 Write + Read Burst", "tock": 0 },
