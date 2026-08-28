@@ -50,16 +50,13 @@ Usage
     python3 wavegen.py --svg out.svg            # also emit a standalone SVG
 """
 
-from __future__ import annotations
-
 import argparse
 import html as _html
 import json
 import re
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 __version__ = "1.0.0"
 
@@ -167,7 +164,7 @@ _BUS_PRINT = [
 _MARK_PRINT = {k: "#1A1A1A" for k in _MARK_DARK}
 
 
-def theme_vars(name: str) -> dict[str, str]:
+def theme_vars(name: str) -> Dict[str, str]:
     """Return the CSS custom-property map for a theme."""
     if name == "print":
         # Formal black-and-white for embedding in a document: one ink colour,
@@ -277,27 +274,29 @@ VAR_NAMES = sorted(theme_vars("dark").keys())
 # Wave parsing
 # ===========================================================================
 
-@dataclass
 class Brick:
     """One discrete step (or a run of merged identical steps) of a waveform."""
-    kind: str                       # clock | level | data | hatch | blank
-    char: str
-    start: float                    # start position, in cycles
-    span: float                     # width, in cycles
-    rail: str | None = None         # low | high | mid  (level bricks)
-    polarity: str | None = None     # pos | neg         (clock bricks)
-    text: str | None = None         # bus value         (data bricks)
-    slot: int = 0                   # bus colour slot
-    marked: bool = False            # draw an edge arrow
-    weak: bool = False              # pull-up / pull-down
-    subcycles: int = 1              # clock periods packed into this one step
+
+    def __init__(self, kind, char, start, span, rail=None, polarity=None,
+                 text=None, slot=0, marked=False, weak=False, subcycles=1):
+        self.kind = kind             # clock | level | data | hatch | blank
+        self.char = char
+        self.start = start           # start position, in cycles
+        self.span = span             # width, in cycles
+        self.rail = rail             # low | high | mid  (level bricks)
+        self.polarity = polarity     # pos | neg         (clock bricks)
+        self.text = text             # bus value         (data bricks)
+        self.slot = slot             # bus colour slot
+        self.marked = marked         # draw an edge arrow
+        self.weak = weak             # pull-up / pull-down
+        self.subcycles = subcycles   # clock periods packed into this one step
 
 
-@dataclass
 class Wave:
-    bricks: list[Brick] = field(default_factory=list)
-    gaps: list[float] = field(default_factory=list)   # cycle positions of break symbols
-    end: float = 0.0                                  # last occupied cycle
+    def __init__(self):
+        self.bricks = []      # type: List[Brick]
+        self.gaps = []        # type: List[float]  -- cycle positions of break symbols
+        self.end = 0.0        # last occupied cycle
 
 
 _REPEAT_RE = re.compile(r"([^{}])\{(\d+)\}")
@@ -345,7 +344,7 @@ def parse_wave(wave: str, data: Any, period: float = 1.0, phase: float = 0.0,
     out = Wave()
     pos = -phase
     di = 0
-    prev_char: str | None = None
+    prev_char = None       # type: Optional[str]
 
     for raw in expand_repeats(wave or ""):
         if raw == REPEAT_CHAR:
@@ -417,35 +416,36 @@ def parse_wave(wave: str, data: Any, period: float = 1.0, phase: float = 0.0,
 # Document model
 # ===========================================================================
 
-@dataclass
 class Row:
-    kind: str                       # signal | spacer
-    sig: dict
-    depth: int
-    index: int
-    y: float = 0.0                  # top of the row
-    height: float = 0.0
-    wave: Wave | None = None
+    def __init__(self, kind, sig, depth, index, y=0.0, height=0.0, wave=None):
+        self.kind = kind             # signal | index | spacer
+        self.sig = sig
+        self.depth = depth
+        self.index = index
+        self.y = y                   # top of the row
+        self.height = height
+        self.wave = wave             # type: Optional[Wave]
 
 
-@dataclass
 class Group:
-    label: str
-    depth: int
-    first: int                      # first row index (inclusive)
-    last: int                       # last row index (inclusive)
+    def __init__(self, label, depth, first, last):
+        self.label = label
+        self.depth = depth
+        self.first = first           # first row index (inclusive)
+        self.last = last             # last row index (inclusive)
 
 
-@dataclass
 class Fold:
     """A span of dead time collapsed to a narrow break band."""
-    a: float                        # first folded cycle
-    b: float                        # first cycle after the fold
-    label: str = ""
-    force: bool = False             # render even if a signal toggles inside
+
+    def __init__(self, a, b, label="", force=False):
+        self.a = a                   # first folded cycle
+        self.b = b                   # first cycle after the fold
+        self.label = label
+        self.force = force           # render even if a signal toggles inside
 
     @property
-    def cycles(self) -> float:
+    def cycles(self):
         return self.b - self.a
 
     def text(self) -> str:
@@ -456,9 +456,9 @@ class Fold:
         return f"{n} cycles"
 
 
-def normalize_folds(spec: Any, total: float) -> list[Fold]:
+def normalize_folds(spec: Any, total: float) -> List[Fold]:
     """Clamp, drop degenerate, sort, and merge overlapping folds."""
-    raw: list[Fold] = []
+    raw = []                # type: List[Fold]
     for item in spec or []:
         if not isinstance(item, dict):
             continue
@@ -475,7 +475,7 @@ def normalize_folds(spec: Any, total: float) -> list[Fold]:
         raw.append(Fold(a, b, str(item.get("label", "")), bool(item.get("force"))))
 
     raw.sort(key=lambda f: f.a)
-    merged: list[Fold] = []
+    merged = []             # type: List[Fold]
     for f in raw:
         if merged and f.a <= merged[-1].b:
             last = merged[-1]
@@ -487,8 +487,8 @@ def normalize_folds(spec: Any, total: float) -> list[Fold]:
     return merged
 
 
-def flatten(items: Any, depth: int = 0, rows: list[Row] | None = None,
-            groups: list[Group] | None = None) -> tuple[list[Row], list[Group]]:
+def flatten(items: Any, depth: int = 0, rows: Optional[List[Row]] = None,
+            groups: Optional[List[Group]] = None) -> Tuple[List[Row], List[Group]]:
     """Flatten the nested WaveJSON ``signal`` tree into rows plus group spans."""
     rows = [] if rows is None else rows
     groups = [] if groups is None else groups
@@ -517,7 +517,7 @@ def flatten(items: Any, depth: int = 0, rows: list[Row] | None = None,
 class Diagram:
     """Parsed, laid-out diagram ready for rendering."""
 
-    def __init__(self, doc: dict, overrides: dict | None = None):
+    def __init__(self, doc: dict, overrides: Optional[dict] = None):
         cfg = dict(doc.get("config") or {})
         cfg.update({k: v for k, v in (overrides or {}).items() if v is not None})
 
@@ -600,7 +600,7 @@ class Diagram:
 
     # -- helpers ---------------------------------------------------------
 
-    def row_rails(self, row: Row) -> tuple[float, float, float]:
+    def row_rails(self, row: Row) -> Tuple[float, float, float]:
         """Return (high_y, low_y, mid_y) for a signal row."""
         hi = row.y + (row.height - self.wave_h) / 2.0
         lo = hi + self.wave_h
@@ -635,7 +635,7 @@ class Diagram:
         them is the whole point.  Anything else changing state inside a fold
         would be silently lost, which is a bug in the diagram, not a style.
         """
-        bad: list[str] = []
+        bad = []            # type: List[str]
         for f in self.folds:
             if f.force:
                 continue
@@ -656,8 +656,8 @@ class Diagram:
                 + "\n".join(sorted(set(bad))[:12])
                 + '\nMove the fold, or set "force": true on it to render anyway.')
 
-    def _collect_nodes(self) -> dict[str, tuple[float, float]]:
-        nodes: dict[str, tuple[float, float]] = {}
+    def _collect_nodes(self) -> Dict[str, Tuple[float, float]]:
+        nodes = {}          # type: Dict[str, Tuple[float, float]]
         for row in self.rows:
             if row.kind != "signal":
                 continue
@@ -699,7 +699,7 @@ def _rail_y(rail: str, hi: float, lo: float, mid: float) -> float:
     return {"high": hi, "low": lo, "mid": mid}[rail]
 
 
-def _entry_y(b: Brick, hi: float, lo: float, mid: float) -> float | None:
+def _entry_y(b: Brick, hi: float, lo: float, mid: float) -> Optional[float]:
     if b.kind == "clock":
         return hi if b.polarity == "pos" else lo
     if b.kind == "level":
@@ -707,7 +707,7 @@ def _entry_y(b: Brick, hi: float, lo: float, mid: float) -> float | None:
     return None
 
 
-def _exit_y(b: Brick, hi: float, lo: float, mid: float) -> float | None:
+def _exit_y(b: Brick, hi: float, lo: float, mid: float) -> Optional[float]:
     if b.kind == "clock":
         return lo if b.polarity == "pos" else hi
     if b.kind == "level":
@@ -736,7 +736,7 @@ def render_row_wave(dg: Diagram, row: Row) -> str:
     # Junction rail height at the left boundary of each brick.  Buses meet other
     # buses at mid-rail (forming the classic crossover) and meet levels at that
     # level's height so the bus visibly opens out of / closes into the line.
-    junction: list[float] = []
+    junction = []           # type: List[float]
     for i, b in enumerate(bricks):
         prev = bricks[i - 1] if i > 0 else None
         if prev is None or prev.kind == "blank":
@@ -750,10 +750,10 @@ def render_row_wave(dg: Diagram, row: Row) -> str:
     last = bricks[-1]
     junction.append(mid if _is_bus(last) else (_exit_y(last, hi, lo, mid) or mid))
 
-    parts: list[str] = []
-    rail_paths: list[str] = []
-    cmds: list[str] = []
-    prev_exit: float | None = None
+    parts = []              # type: List[str]
+    rail_paths = []         # type: List[str]
+    cmds = []               # type: List[str]
+    prev_exit = None        # type: Optional[float]
     prev_bus = False
 
     stroke_style = ""
@@ -1336,7 +1336,7 @@ SVG_CSS += "".join(
 )
 
 
-def build_svg(dg: Diagram, standalone: bool = False, theme: str | None = None) -> str:
+def build_svg(dg: Diagram, standalone: bool = False, theme: Optional[str] = None) -> str:
     body = []
     body.append(SVG_DEFS)
     # Paint the full canvas so the SVG is self-sufficient when saved out of the
@@ -1938,7 +1938,7 @@ def load_doc(path: Path) -> dict:
     return doc
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         prog="wavegen.py",
         description="Render interface timing waveforms from a WaveJSON description.")
@@ -1957,7 +1957,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     doc = load_doc(args.input)
-    overrides: dict[str, Any] = {
+    overrides = {
         "theme": args.theme,
         "hscale": args.hscale,
         "vscale": args.vscale,

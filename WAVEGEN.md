@@ -4,7 +4,7 @@ Interface timing waveform generator for IP / protocol documentation.
 
 Reads a [WaveDrom](https://wavedrom.com)-compatible JSON description and renders a
 self-contained, interactive HTML page with crisp SVG waveforms. No external
-dependencies — standard library only.
+dependencies — standard library only. Requires Python 3.6+.
 
 ```bash
 python3 wavegen.py                          # in.json -> out.html
