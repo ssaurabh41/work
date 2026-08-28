@@ -880,11 +880,11 @@ def _fit_text(text: str, avail: float) -> str:
     limit = int(max(0.0, avail) // per)
     if len(text) <= limit:
         return text
-    # Below two characters an ellipsis alone is just noise — the brick shape
+    # Below two characters an ellipsis alone is just noise -- the brick shape
     # already says a value is there, and the tooltip still carries it.
     if limit < 2:
         return ""
-    return text[: limit - 1] + "…"
+    return text[: limit - 1] + "\u2026"
 
 
 def _edge_arrow(x: float, from_y: float, to_y: float, hi: float, lo: float) -> str:
@@ -1841,7 +1841,7 @@ def build_html(dg: Diagram) -> str:
 
     foot_text = dg.foot.get("text", "")
     subtitle = dg.subtitle or (
-        f"{sum(1 for r in dg.rows if r.kind == 'signal')} signals · "
+        f"{sum(1 for r in dg.rows if r.kind == 'signal')} signals \u00b7 "
         f"{int(dg.cycles)} cycles")
 
     return f"""<!doctype html>
@@ -1869,7 +1869,7 @@ def build_html(dg: Diagram) -> str:
     <div class="wg-subtitle">{esc(subtitle)}</div>
   </div>
   <div class="wg-tools">
-    <input id="wg-search" class="wg-search" type="search" placeholder="Filter signals…"
+    <input id="wg-search" class="wg-search" type="search" placeholder="Filter signals\u2026"
            aria-label="Filter signals">
     <div class="wg-scale">
       <label for="wg-cwrange">Time unit</label>
@@ -1878,7 +1878,7 @@ def build_html(dg: Diagram) -> str:
       <output id="wg-cwval" for="wg-cwrange">46px</output>
     </div>
     <div class="wg-seg" role="group" aria-label="Zoom">
-      <button id="wg-zoomout" title="Zoom out (-)" aria-label="Zoom out">−</button>
+      <button id="wg-zoomout" title="Zoom out (-)" aria-label="Zoom out">\u2212</button>
       <span class="wg-zoomval" id="wg-zoomval">100%</span>
       <button id="wg-zoomin" title="Zoom in (+)" aria-label="Zoom in">+</button>
       <button id="wg-zoomfit" title="Fit the whole diagram to the window (f)">Fit</button>
@@ -1897,11 +1897,11 @@ def build_html(dg: Diagram) -> str:
   <span class="wg-foottext">{esc(foot_text)}</span>
   <span class="wg-readout" id="wg-readout"></span>
   <span class="wg-hint">
-    <span class="wg-kbd">click</span> set A/B ·
-    <span class="wg-kbd">esc</span> clear ·
-    <span class="wg-kbd">[</span><span class="wg-kbd">]</span> time unit ·
-    <span class="wg-kbd">/</span> search ·
-    <span class="wg-kbd">t</span> theme ·
+    <span class="wg-kbd">click</span> set A/B \u00b7
+    <span class="wg-kbd">esc</span> clear \u00b7
+    <span class="wg-kbd">[</span><span class="wg-kbd">]</span> time unit \u00b7
+    <span class="wg-kbd">/</span> search \u00b7
+    <span class="wg-kbd">t</span> theme \u00b7
     <span class="wg-kbd">f</span> fit
   </span>
 </div>
