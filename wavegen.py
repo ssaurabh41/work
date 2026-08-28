@@ -68,8 +68,13 @@ __version__ = "1.0.0"
 # Wave language tables
 # ===========================================================================
 
-CLOCK_POLARITY = {"p": "pos", "P": "pos", "n": "neg", "N": "neg"}
-CLOCK_MARKED = {"P", "N"}
+CLOCK_POLARITY = {"p": "pos", "P": "pos", "n": "neg", "N": "neg",
+                  "f": "pos", "F": "pos"}
+CLOCK_MARKED = {"P", "N", "F"}
+# f/F are p/P run fast: one step carries `cycles_per_unit` whole clock periods
+# at 50% duty, rather than the single rise-and-fall of p/n.
+FAST_CLOCK = {"f", "F"}
+MAX_CYCLES_PER_UNIT = 32
 
 LEVEL_RAIL = {
     "0": "low", "1": "high",
@@ -150,10 +155,54 @@ _MARK_LIGHT = {
     "orange": "#C4732C", "violet": "#8B54C0", "slate": "#6C7C96",
 }
 
+# Print: the nine bus slots become a monotonic grey ramp rather than nine hues,
+# so buses stay tellable apart in a black-and-white document.  Black outline and
+# black text throughout; the darkest fill still carries black text legibly.
+_BUS_PRINT = [
+    (f, "#000000", "#000000") for f in (
+        "#FFFFFF", "#F4F4F4", "#E9E9E9", "#DEDEDE", "#D3D3D3",
+        "#C8C8C8", "#BDBDBD", "#B2B2B2", "#A7A7A7",
+    )
+]
+_MARK_PRINT = {k: "#1A1A1A" for k in _MARK_DARK}
+
 
 def theme_vars(name: str) -> dict[str, str]:
     """Return the CSS custom-property map for a theme."""
-    if name == "light":
+    if name == "print":
+        # Formal black-and-white for embedding in a document: one ink colour,
+        # a grey ramp for buses, and no tint between annotation markers.
+        v = {
+            "--wg-bg": "#FFFFFF",
+            "--wg-panel": "#FFFFFF",
+            "--wg-panel-2": "#F4F4F4",
+            "--wg-border": "#BDBDBD",
+            "--wg-text": "#000000",
+            "--wg-muted": "#2E2E2E",
+            "--wg-faint": "#5C5C5C",
+            "--wg-accent": "#1A1A1A",
+            "--wg-accent-soft": "#ECECEC",
+            "--wg-wave": "#000000",
+            "--wg-wave-clk": "#000000",
+            "--wg-grid": "#EDEDED",
+            "--wg-grid-strong": "#D2D2D2",
+            "--wg-row-alt": "rgba(0, 0, 0, 0.025)",
+            "--wg-row-hover": "rgba(0, 0, 0, 0.06)",
+            "--wg-edge": "#1A1A1A",
+            "--wg-edge-text": "#000000",
+            "--wg-edge-chip": "#FFFFFF",
+            "--wg-cursor": "#1A1A1A",
+            "--wg-measure": "#1A1A1A",
+            "--wg-fold": "#1A1A1A",
+            "--wg-hatch": "#9A9A9A",
+            "--wg-hatch-bg": "#FFFFFF",
+            "--wg-shadow": "rgba(0, 0, 0, 0.12)",
+            # The band between annotation markers carries no fill in print; the
+            # dashed boundaries and the label still say where the section is.
+            "--wg-markband-op": "0",
+        }
+        buses, marks = _BUS_PRINT, _MARK_PRINT
+    elif name == "light":
         v = {
             "--wg-bg": "#FAFBFD",
             "--wg-panel": "#FFFFFF",
@@ -179,6 +228,7 @@ def theme_vars(name: str) -> dict[str, str]:
             "--wg-hatch": "#AAB6C9",
             "--wg-hatch-bg": "#F0F3F8",
             "--wg-shadow": "rgba(20, 30, 55, 0.10)",
+            "--wg-markband-op": "0.075",
         }
         buses, marks = _BUS_LIGHT, _MARK_LIGHT
     else:
@@ -207,6 +257,7 @@ def theme_vars(name: str) -> dict[str, str]:
             "--wg-hatch": "#54627C",
             "--wg-hatch-bg": "#141A25",
             "--wg-shadow": "rgba(0, 0, 0, 0.45)",
+            "--wg-markband-op": "0.075",
         }
         buses, marks = _BUS_DARK, _MARK_DARK
 
@@ -239,6 +290,7 @@ class Brick:
     slot: int = 0                   # bus colour slot
     marked: bool = False            # draw an edge arrow
     weak: bool = False              # pull-up / pull-down
+    subcycles: int = 1              # clock periods packed into this one step
 
 
 @dataclass
@@ -271,11 +323,13 @@ def expand_repeats(wave: str) -> str:
 
 
 def parse_wave(wave: str, data: Any, period: float = 1.0, phase: float = 0.0,
-               clock_arrows: str = "explicit") -> Wave:
+               clock_arrows: str = "explicit", cycles_per_unit: int = 1) -> Wave:
     """Expand a wave string into positioned bricks.
 
     ``period`` stretches every step; ``phase`` shifts the whole wave left.
+    ``cycles_per_unit`` sets how many clock periods an ``f``/``F`` step holds.
     """
+    cycles_per_unit = max(1, min(int(cycles_per_unit or 1), MAX_CYCLES_PER_UNIT))
     period = float(period or 1.0)
     if period <= 0:
         period = 1.0
@@ -319,7 +373,8 @@ def parse_wave(wave: str, data: Any, period: float = 1.0, phase: float = 0.0,
             marked = (raw in CLOCK_MARKED) if clock_arrows == "explicit" else (ch in CLOCK_MARKED)
             out.bricks.append(Brick(
                 "clock", ch, pos, period,
-                polarity=CLOCK_POLARITY[ch], marked=marked))
+                polarity=CLOCK_POLARITY[ch], marked=marked,
+                subcycles=cycles_per_unit if ch in FAST_CLOCK else 1))
 
         elif ch in DATA_CHARS or ch in HATCH_CHARS:
             kind = "hatch" if ch in HATCH_CHARS else "data"
@@ -469,13 +524,17 @@ class Diagram:
         self.doc = doc
         self.config = cfg
         self.theme = cfg.get("theme", "dark")
-        if self.theme not in ("dark", "light"):
+        if self.theme not in ("dark", "light", "print"):
             self.theme = "dark"
 
         self.hscale = float(cfg.get("hscale", 1) or 1)
         self.vscale = float(cfg.get("vscale", 1) or 1)
         self.show_grid = bool(cfg.get("grid", True))
         self.clock_arrows = cfg.get("clockArrows", "explicit")
+        # How many clock periods an f/F step holds. 1 makes f identical to p.
+        self.cycles_per_unit = max(1, min(
+            int(cfg.get("cycles_per_unit", cfg.get("cyclesPerUnit", 1)) or 1),
+            MAX_CYCLES_PER_UNIT))
 
         self.head = _as_block(doc.get("head"))
         self.foot = _as_block(doc.get("foot"))
@@ -497,6 +556,9 @@ class Diagram:
                 row.sig.get("period", 1),
                 row.sig.get("phase", 0),
                 self.clock_arrows,
+                # A signal may override the document rate for its own clock.
+                row.sig.get("cycles_per_unit",
+                            row.sig.get("cyclesPerUnit", self.cycles_per_unit)),
             )
             self.cycles = max(self.cycles, row.wave.end)
         self.cycles = max(self.cycles, 1.0)
@@ -664,7 +726,7 @@ def render_row_wave(dg: Diagram, row: Row) -> str:
         return ""
 
     hi, lo, mid = dg.row_rails(row)
-    slew = min(SLEW, dg.cw / 3.0)
+    base_slew = min(SLEW, dg.cw / 3.0)
     bricks = wave.bricks
     n = len(bricks)
 
@@ -750,6 +812,11 @@ def render_row_wave(dg: Diagram, row: Row) -> str:
         entry = _entry_y(b, hi, lo, mid)
         exit_y = _exit_y(b, hi, lo, mid)
 
+        # A fast clock packs several periods into one step, so the transition
+        # ramp has to shrink with them or it swallows the pulse whole.
+        sub = width / max(1, b.subcycles)
+        slew = min(base_slew, sub / 6.0)
+
         if prev_bus:
             # The preceding bus already closed onto this brick's entry height.
             cmds = [f"M {fmt(xs)} {fmt(entry)}"]
@@ -772,12 +839,20 @@ def render_row_wave(dg: Diagram, row: Row) -> str:
             cmds.append(f"L {fmt(xs)} {fmt(entry)}")
 
         if b.kind == "clock":
-            xm = xs + width / 2.0
-            cmds.append(f"L {fmt(xm - slew / 2)} {fmt(entry)}")
-            cmds.append(f"L {fmt(xm + slew / 2)} {fmt(exit_y)}")
+            # One period per subcycle at 50% duty: hold `entry` for the first
+            # half, `exit_y` for the second, then rise again for the next.
+            for i in range(max(1, b.subcycles)):
+                xa = xs + i * sub
+                xm = xa + sub / 2.0
+                if i:                       # rising edge into this period
+                    cmds.append(f"L {fmt(xa - slew / 2)} {fmt(exit_y)}")
+                    cmds.append(f"L {fmt(xa + slew / 2)} {fmt(entry)}")
+                cmds.append(f"L {fmt(xm - slew / 2)} {fmt(entry)}")
+                cmds.append(f"L {fmt(xm + slew / 2)} {fmt(exit_y)}")
             cmds.append(f"L {fmt(xe)} {fmt(exit_y)}")
             if b.marked:
-                # Mark the active edge: the pulse's own leading edge at xs.
+                # Mark the active edge: the step's own leading edge at xs.  One
+                # arrow per step -- a fast clock would otherwise be all arrows.
                 parts.append(_edge_arrow(xs, exit_y, entry, hi, lo))
 
         else:
@@ -1218,7 +1293,7 @@ SVG_CSS = """
 .wg-idxtext{font-family:var(--wg-mono);font-size:10.5px;fill:var(--wg-faint);
   text-anchor:middle;font-variant-numeric:tabular-nums;pointer-events:none}
 
-.wg-markband{opacity:.075}
+.wg-markband{opacity:var(--wg-markband-op)}
 .wg-markedge{stroke-width:1;stroke-dasharray:3 3;opacity:.5}
 .wg-markline{stroke-width:1.4;stroke-dasharray:5 3;opacity:.75}
 .wg-chip rect{opacity:.92}
@@ -1454,9 +1529,12 @@ PAGE_JS = """
 
   /* ---- theme ------------------------------------------------------- */
   var themeBtn=document.getElementById('wg-theme');
+  var THEMES=['light','dark','print'];   /* button shows the next one */
   function setTheme(t){
+    if(THEMES.indexOf(t)<0) t='dark';
     root.setAttribute('data-theme',t);
-    themeBtn.textContent = t==='dark' ? 'Light' : 'Dark';
+    var nxt=THEMES[(THEMES.indexOf(t)+1)%THEMES.length];
+    themeBtn.textContent=nxt.charAt(0).toUpperCase()+nxt.slice(1);
     try{localStorage.setItem('wavegen-theme',t);}catch(e){}
   }
   try{
@@ -1464,7 +1542,8 @@ PAGE_JS = """
     if(saved){setTheme(saved);} else {setTheme(root.getAttribute('data-theme')||'dark');}
   }catch(e){setTheme(root.getAttribute('data-theme')||'dark');}
   themeBtn.addEventListener('click',function(){
-    setTheme(root.getAttribute('data-theme')==='dark'?'light':'dark');
+    var cur=root.getAttribute('data-theme');
+    setTheme(THEMES[(THEMES.indexOf(cur)+1)%THEMES.length]);
   });
 
   /* ---- horizontal time-unit scale ---------------------------------- */
@@ -1754,6 +1833,7 @@ PAGE_JS = """
 def build_html(dg: Diagram) -> str:
     light = ";".join(f"{k}:{v}" for k, v in theme_vars("light").items())
     dark = ";".join(f"{k}:{v}" for k, v in theme_vars("dark").items())
+    printed = ";".join(f"{k}:{v}" for k, v in theme_vars("print").items())
 
     js = (PAGE_JS
           .replace("__VARS__", json.dumps(VAR_NAMES))
@@ -1776,6 +1856,7 @@ def build_html(dg: Diagram) -> str:
 <style>
 :root{{{light}}}
 [data-theme="dark"]{{{dark}}}
+[data-theme="print"]{{{printed}}}
 {UI_CSS}
 {SVG_CSS}
 </style>
@@ -1867,7 +1948,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="output HTML file (default: out.html)")
     ap.add_argument("--svg", type=Path, default=None,
                     help="also write a standalone SVG to this path")
-    ap.add_argument("--theme", choices=("dark", "light"), default=None,
+    ap.add_argument("--theme", choices=("dark", "light", "print"), default=None,
                     help="override config.theme")
     ap.add_argument("--hscale", type=float, default=None, help="override config.hscale")
     ap.add_argument("--vscale", type=float, default=None, help="override config.vscale")

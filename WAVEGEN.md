@@ -33,6 +33,7 @@ both a rising and a falling edge inside a single step.
 | `L` `H` | low / high level, transition marked with an arrow             |
 | `p` `n` | clock pulse, positive / negative polarity — two edges per step |
 | `P` `N` | clock pulse with the active edge marked                       |
+| `f` `F` | fast clock — `cycles_per_unit` whole periods per step *(extension)* |
 | `u` `d` | weak pull-up / pull-down (eased transition)                   |
 | `z`     | high impedance (mid rail)                                     |
 | `x` `X` | don't care (hatched)                                          |
@@ -70,6 +71,7 @@ the front.)
 | `color`  | stroke / label colour override *(extension)*               |
 | `desc`   | tooltip shown on the signal name *(extension)*             |
 | `index`  | virtual step-number row, see below *(extension)*           |
+| `cycles_per_unit` | fast-clock rate for this signal *(extension)*      |
 
 Nest signals in an array whose first element is a string to form a labelled,
 collapsible group; groups may nest arbitrarily. An empty object `{}` is a spacer.
@@ -86,8 +88,9 @@ collapsible group; groups may nest arbitrarily. An empty object `{}` is a spacer
 | `marks`  | highlight bands / cursors *(extension)*                              |
 | `folds`  | spans of dead time collapsed to a break band *(extension)*            |
 
-`config` accepts `theme` (`dark`\|`light`), `hscale`, `vscale`, `grid`,
-`clockArrows` (`explicit`\|`all`), `foldWidth`, `title`, and `subtitle`.
+`config` accepts `theme` (`dark`\|`light`\|`print`), `hscale`, `vscale`, `grid`,
+`clockArrows` (`explicit`\|`all`), `cycles_per_unit`, `foldWidth`, `title`, and
+`subtitle`.
 
 `marks` entries are either a band — `{"from": 2, "to": 4, "label": "AW",
 "color": "indigo"}` — or a cursor — `{"at": 8, "label": "WLAST"}`. Named colours
@@ -96,6 +99,42 @@ are `indigo`, `teal`, `amber`, `rose`, `cyan`, `lime`, `orange`, `violet`,
 
 Edge shapes: `-` straight, `~` spline, `-|` / `|-` / `-|-` orthogonal, with
 `<` and `>` adding arrowheads (`a<->b`, `c~>d`).
+
+## Fast clocks
+
+`p` gives one rising and one falling edge per step. `f` (and `F`, which marks the
+step's leading edge) packs `cycles_per_unit` whole periods into a single step at
+50% duty:
+
+```json
+"config": { "cycles_per_unit": 8 },
+"signal": [
+  { "name": "REFCLK", "wave": "p{10}" },
+  { "name": "PLLCLK", "wave": "f{10}" }
+]
+```
+
+Range 1–32, clamped; the default 1 makes `f` identical to `p`. A signal may
+carry its own `"cycles_per_unit"` to override the document rate, so a reference
+clock and several derived clocks can share one diagram. `p` and `n` ignore the
+setting entirely.
+
+Past roughly ×16 the trace reads as a dense band rather than countable pulses —
+that is the honest picture at that ratio, and it is also where the SVG grows
+(a 54-step row is ~23 KB at ×1 and ~106 KB at ×32).
+
+## Print theme
+
+`"theme": "print"` renders black-and-white for embedding in a document:
+
+* One ink colour — black traces, text, ticks and annotations on white.
+* The nine bus colour slots become a monotonic grey ramp, so buses stay
+  tellable apart without hue.
+* **No tint between annotation markers.** The dashed boundaries and the section
+  label stay; only the coloured band between them is dropped.
+
+Use it from the CLI for a figure — `python3 wavegen.py --theme print --svg fig.svg`
+— or from the page's theme button, which cycles Light → Dark → Print.
 
 ## Folding dead time
 
@@ -107,13 +146,13 @@ span once, in real cycle numbers, and it collapses to a narrow break band:
 ```
 
 `{"from": 15, "cycles": 32}` is equivalent. The shipped `in.json` is 54 cycles
-wide but renders in the space of 23.6 — the ruler jumps 14 → 47 across a torn
-band, and `config.foldWidth` (default 1.6 cycle-widths) sets how much room the
+wide but renders in the space of 22.3 — the ruler jumps 14 → 47 across a torn
+band, and `config.foldWidth` (default 0.34 cycle-widths) sets how much room the
 band keeps.
 
 Time stays honest: hovering reports true cycle numbers on both sides, a
 measurement spanning the fold counts the cycles that were elided (35, not the
-4.6 you can see), and hovering inside the band names the folded span rather
+1.3 you can see), and hovering inside the band names the folded span rather
 than inventing a fractional cycle.
 
 A fold that would hide a real transition is refused, naming the signal and
@@ -145,7 +184,11 @@ obvious next to the signals rather than only at the top ruler. Accepts
   measurements still counting the real elapsed cycles.
 * **Step-index row** and **`c{n}` run-length** syntax, so long diagrams stay
   readable to write as well as to read.
-* Dark and light themes, toggleable in the page and remembered per browser.
+* **Print theme** — black and white only, grey-ramp buses, no marker band tint,
+  for figures going into a document.
+* **Fast clocks** — `f`/`F` with `cycles_per_unit` (1–32) puts many clock
+  periods inside one time unit at 50% duty.
+* Dark, light and print themes, toggleable in the page and remembered per browser.
 * Hover time cursor with a live cycle and signal readout.
 * Click twice to measure an interval; the delta is shown in cycles.
 * Signal search that dims non-matching rows.
@@ -168,7 +211,7 @@ markers.
 -i, --input    input WaveJSON file      (default: in.json)
 -o, --output   output HTML file         (default: out.html)
     --svg      also write a standalone SVG to this path
-    --theme    dark | light             (overrides config.theme)
+    --theme    dark | light | print     (overrides config.theme)
     --hscale   horizontal scale         (overrides config.hscale)
     --vscale   vertical scale           (overrides config.vscale)
     --no-grid  disable the cycle grid
