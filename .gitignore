@@ -1,5 +1,12 @@
 __pycache__/
-*.pyc
-*.pyo
-expenses.json
-test_expenses.json
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+
+# Exported output
+*.svg
+!examples/*.svg
