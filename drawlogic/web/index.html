@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>drawlogic</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+
+<div class="menubar">
+  <div class="brand">draw<span>logic</span></div>
+
+  <label class="field">
+    <span>File</span>
+    <select id="file-select" title="Drawings found under the served folder"></select>
+  </label>
+
+  <button id="btn-save" class="action" title="Save (Ctrl+S)">Save</button>
+  <button id="btn-export" class="action" title="Export SVG (Ctrl+E)">Export SVG</button>
+  <button id="btn-symbol" class="action"
+          title="Turn this drawing into a symbol: its shapes become the artwork, its ports become the pins">Save as symbol</button>
+  <button id="btn-png" class="action"
+          title="Copy the drawing as a picture, ready to paste into a slide (Ctrl+Shift+E)">Copy PNG</button>
+
+  <span class="divider"></span>
+  <button id="btn-undo" class="action" title="Undo (Ctrl+Z)">Undo</button>
+  <button id="btn-redo" class="action" title="Redo (Ctrl+Shift+Z)">Redo</button>
+
+  <div class="spacer"></div>
+  <div class="filechip">
+    <span id="file-path">no file</span>
+    <nav id="breadcrumb" class="crumbs" title="Where you drilled in from" hidden></nav>
+    <span id="dirty" class="dirty" hidden title="unsaved changes">&#9679;</span>
+  </div>
+</div>
+
+<div class="toolbar">
+  <div class="tgroup">
+    <button class="tool" data-tool="select" aria-pressed="true" title="Select (V)">Select</button>
+    <button class="tool" data-tool="wire" aria-pressed="false" title="Wire (W)">Wire</button>
+  </div>
+
+  <div class="tgroup">
+    <button class="tool" data-tool="shape" data-shape="line" title="Line (L)">Line</button>
+    <button class="tool" data-tool="shape" data-shape="rect" title="Box (B)">Box</button>
+    <button class="tool" data-tool="shape" data-shape="polygon" title="Polygon (P) - click points, double-click to close">Polygon</button>
+    <button class="tool" data-tool="shape" data-shape="text" title="Text (T)">Text</button>
+  </div>
+
+  <div class="tgroup">
+    <button class="tool" data-command="rotate-cw" title="Rotate 90 CW (Ctrl+R)">Rotate</button>
+    <button class="tool" data-command="flip-h" title="Flip horizontal (Ctrl+H)">Flip</button>
+    <button class="tool" data-command="group" title="Group (Ctrl+G)">Group</button>
+    <button class="tool" data-command="ungroup" title="Ungroup (Ctrl+Shift+G)">Ungroup</button>
+    <button class="tool" data-command="delete" title="Delete (Del)">Delete</button>
+  </div>
+
+  <div class="tgroup">
+    <label class="field">
+      <span>Arrange</span>
+      <select id="arrange-select">
+        <option value="">Choose...</option>
+        <option value="layout">Auto layout (rearrange everything)</option>
+        <option value="tidy">Tidy up (straighten wires)</option>
+        <option value="align-left">Align left</option>
+        <option value="align-hcenter">Align centre</option>
+        <option value="align-right">Align right</option>
+        <option value="align-top">Align top</option>
+        <option value="align-vcenter">Align middle</option>
+        <option value="align-bottom">Align bottom</option>
+        <option value="distribute-h">Distribute across</option>
+        <option value="distribute-v">Distribute down</option>
+        <option value="front">Bring to front</option>
+        <option value="back">Send to back</option>
+      </select>
+    </label>
+  </div>
+
+  <label class="field">
+    <span>Grid</span>
+    <select id="grid-select">
+      <option value="dots">Dots</option>
+      <option value="dots-wide">Dots &mdash; wide</option>
+      <option value="lines">Lines</option>
+      <option value="lines-heavy">Lines &mdash; major/minor</option>
+      <option value="blank">Blank</option>
+    </select>
+  </label>
+
+  <label class="field slider">
+    <span>Zoom</span>
+    <input id="zoom-slider" type="range" min="10" max="400" step="1" value="100">
+    <output id="zoom-value">100%</output>
+  </label>
+  <button id="btn-fit" class="action" title="Fit to window (Ctrl+0)">Fit</button>
+
+  <label class="field slider">
+    <span>Text</span>
+    <input id="font-slider" type="range" min="50" max="250" step="5" value="100">
+    <output id="font-value">100%</output>
+  </label>
+
+  <label class="field slider">
+    <span>Symbols</span>
+    <input id="symbol-slider" type="range" min="50" max="250" step="5" value="100">
+    <output id="symbol-value">100%</output>
+  </label>
+</div>
+
+<div class="panes">
+  <aside class="palette">
+    <div class="pane-head">Symbols</div>
+    <div id="palette-body"></div>
+    <p class="palette-note">
+      Click a symbol, then click the canvas. Shift-click the canvas to keep
+      placing the same one.
+    </p>
+  </aside>
+
+  <main class="stage">
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+  </main>
+
+  <aside class="inspector">
+    <div class="pane-head">Properties</div>
+    <div id="properties-body"></div>
+  </aside>
+</div>
+
+<div class="status">
+  <span id="status-counts">&mdash;</span>
+  <span id="status-cursor">x &mdash; y &mdash;</span>
+  <span class="push" id="status-message">Shift-drag or hold Space to pan &middot; scroll to zoom</span>
+</div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
